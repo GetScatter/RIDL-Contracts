@@ -25,6 +25,7 @@ namespace ridl {
 
     void token::claim( account_name claimer ) {
         require_auth( claimer );
+        eosio_assert(now() < 1535760000, "AirGrab is disabled");
 
         accounts acnts( _self, claimer );
 
