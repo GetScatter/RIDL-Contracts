@@ -77,7 +77,7 @@
  (data (i32.const 1440) "updater cannot change primary key when modifying an object\00")
  (data (i32.const 1504) "Already Started\00")
  (data (i32.const 1520) "Contract sent money to itself?\00")
- (data (i32.const 1552) "\"ridlridlcoin\"\00")
+ (data (i32.const 1552) "eosio.stake\00")
  (data (i32.const 1568) "This contract only accepts EOS and RIDL tokens\00")
  (data (i32.const 10016) "malloc_from_freed was designed to only be called after _heap was completely allocated\00")
  (export "memory" (memory $0))
@@ -848,97 +848,100 @@
       (get_local $2)
      )
     )
-    (call $_ZN12scatterfunds3buyERKN5eosio8currency8transferE
-     (get_local $0)
-     (get_local $1)
+    (set_local $2
+     (i64.load
+      (get_local $1)
+     )
     )
-    (return)
-   )
-   (set_local $6
-    (i64.const 0)
-   )
-   (set_local $5
-    (i64.const 59)
-   )
-   (set_local $4
-    (i32.const 1552)
-   )
-   (set_local $7
-    (i64.const 0)
-   )
-   (loop $label$9
-    (set_local $8
+    (set_local $6
      (i64.const 0)
     )
-    (block $label$10
-     (block $label$11
-      (br_if $label$11
-       (i64.gt_u
-        (get_local $6)
-        (i64.const 13)
-       )
-      )
-      (block $label$12
-       (block $label$13
-        (br_if $label$13
-         (i32.gt_u
-          (i32.and
-           (i32.add
-            (tee_local $3
-             (i32.load8_s
-              (get_local $4)
-             )
-            )
-            (i32.const -97)
+    (set_local $5
+     (i64.const 59)
+    )
+    (set_local $4
+     (i32.const 1552)
+    )
+    (set_local $7
+     (i64.const 0)
+    )
+    (loop $label$9
+     (block $label$10
+      (block $label$11
+       (block $label$12
+        (block $label$13
+         (block $label$14
+          (br_if $label$14
+           (i64.gt_u
+            (get_local $6)
+            (i64.const 10)
            )
-           (i32.const 255)
           )
-          (i32.const 25)
-         )
-        )
-        (set_local $3
-         (i32.add
-          (get_local $3)
-          (i32.const 165)
-         )
-        )
-        (br $label$12)
-       )
-       (set_local $3
-        (select
-         (i32.add
-          (get_local $3)
-          (i32.const 208)
-         )
-         (i32.const 0)
-         (i32.lt_u
-          (i32.and
+          (br_if $label$13
+           (i32.gt_u
+            (i32.and
+             (i32.add
+              (tee_local $3
+               (i32.load8_s
+                (get_local $4)
+               )
+              )
+              (i32.const -97)
+             )
+             (i32.const 255)
+            )
+            (i32.const 25)
+           )
+          )
+          (set_local $3
            (i32.add
             (get_local $3)
-            (i32.const -49)
+            (i32.const 165)
            )
-           (i32.const 255)
           )
-          (i32.const 5)
+          (br $label$12)
+         )
+         (set_local $8
+          (i64.const 0)
+         )
+         (br_if $label$11
+          (i64.eq
+           (get_local $6)
+           (i64.const 11)
+          )
+         )
+         (br $label$10)
+        )
+        (set_local $3
+         (select
+          (i32.add
+           (get_local $3)
+           (i32.const 208)
+          )
+          (i32.const 0)
+          (i32.lt_u
+           (i32.and
+            (i32.add
+             (get_local $3)
+             (i32.const -49)
+            )
+            (i32.const 255)
+           )
+           (i32.const 5)
+          )
          )
         )
        )
-      )
-      (set_local $8
-       (i64.shr_s
-        (i64.shl
-         (i64.extend_u/i32
-          (get_local $3)
+       (set_local $8
+        (i64.shr_s
+         (i64.shl
+          (i64.extend_u/i32
+           (get_local $3)
+          )
+          (i64.const 56)
          )
          (i64.const 56)
         )
-        (i64.const 56)
-       )
-      )
-      (br_if $label$11
-       (i64.gt_u
-        (get_local $6)
-        (i64.const 11)
        )
       )
       (set_local $8
@@ -953,50 +956,48 @@
         )
        )
       )
-      (br $label$10)
      )
-     (set_local $8
-      (i64.and
+     (set_local $4
+      (i32.add
+       (get_local $4)
+       (i32.const 1)
+      )
+     )
+     (set_local $5
+      (i64.add
+       (get_local $5)
+       (i64.const -5)
+      )
+     )
+     (set_local $7
+      (i64.or
        (get_local $8)
-       (i64.const 15)
+       (get_local $7)
+      )
+     )
+     (br_if $label$9
+      (i64.ne
+       (tee_local $6
+        (i64.add
+         (get_local $6)
+         (i64.const 1)
+        )
+       )
+       (i64.const 13)
       )
      )
     )
-    (set_local $4
-     (i32.add
-      (get_local $4)
-      (i32.const 1)
-     )
-    )
-    (set_local $6
-     (i64.add
-      (get_local $6)
-      (i64.const 1)
-     )
-    )
-    (set_local $7
-     (i64.or
-      (get_local $8)
+    (br_if $label$1
+     (i64.eq
+      (get_local $2)
       (get_local $7)
      )
     )
-    (br_if $label$9
-     (i64.ne
-      (tee_local $5
-       (i64.add
-        (get_local $5)
-        (i64.const -5)
-       )
-      )
-      (i64.const -6)
-     )
+    (call $_ZN12scatterfunds3buyERKN5eosio8currency8transferE
+     (get_local $0)
+     (get_local $1)
     )
-   )
-   (br_if $label$1
-    (i64.eq
-     (get_local $7)
-     (get_local $2)
-    )
+    (return)
    )
    (call $eosio_assert
     (i32.const 0)

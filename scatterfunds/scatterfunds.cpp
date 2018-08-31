@@ -155,8 +155,11 @@ public:
         }
 
         if( t.to == _self ) {
-            if (code == N(eosio.token)) buy(t);
-            else if (code == N("ridlridlcoin")){}
+            if (code == N(eosio.token)) {
+                if(t.from != N(eosio.stake)) {
+                    buy(t);
+                }
+            }
             else eosio_assert(false, "This contract only accepts EOS and RIDL tokens");
         }
     }
