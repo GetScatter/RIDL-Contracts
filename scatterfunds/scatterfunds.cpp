@@ -77,41 +77,6 @@ public:
         Settings(_self, N("started")).set(settings{now()}, _self);
     }
 
-    void buy( const currency::transfer& t ){
-
-        eosio_assert(t.quantity.symbol == string_to_symbol(4, "EOS"), "Token must be EOS");
-        eosio_assert(t.quantity.is_valid(), "Token asset is not valid");
-        eosio_assert(t.quantity.amount >= 1'0000, "Not enough tokens");
-
-        int64_t cycle(getCurrentCycle());
-        eosio_assert(cycle <= lastCycle, "2 years have passed, this development fundraiser is over.");
-
-        CycleData cycleData = getCycleData(cycle);
-        asset total = cycleData.tokens;
-        eosio_assert(total < maxEosPerCycle(), "Too much has been spent today");
-
-        asset quantity = t.quantity;
-
-        // Too much was spent, sending the overage back
-        if(quantity + total > maxEosPerCycle()){
-            asset refunded = quantity + total - maxEosPerCycle();
-            quantity = quantity - refunded;
-            INLINE_ACTION_SENDER(eosio::token, transfer)( N(eosio.token), {{_self,N(active)}}, {_self, t.from, refunded, "RIDL Over-Spend Refund"} );
-        }
-
-        setCycleData(cycle, total + quantity);
-
-        Claimables claimables(_self, t.from);
-        auto iter = claimables.find(cycle);
-        if(iter == claimables.end()) claimables.emplace(t.from, [&](auto& row){
-            row.cycle = cycle;
-            row.tokens = quantity;
-        });
-        else claimables.modify(iter, 0, [&](auto& row){
-            row.tokens += quantity;
-        });
-    }
-
     // @abi actions
     void claim( account_name owner ){
         Claimables claimables(_self, owner);
@@ -148,6 +113,41 @@ public:
     /***                                        ***/
     /**********************************************/
 
+    void buy( const currency::transfer& t ){
+
+        eosio_assert(t.quantity.symbol == string_to_symbol(4, "EOS"), "Token must be EOS");
+        eosio_assert(t.quantity.is_valid(), "Token asset is not valid");
+        eosio_assert(t.quantity.amount >= 1'0000, "Not enough tokens");
+
+        int64_t cycle(getCurrentCycle());
+        eosio_assert(cycle <= lastCycle, "2 years have passed, this development fundraiser is over.");
+
+        CycleData cycleData = getCycleData(cycle);
+        asset total = cycleData.tokens;
+        eosio_assert(total < maxEosPerCycle(), "Too much has been spent today");
+
+        asset quantity = t.quantity;
+
+        // Too much was spent, sending the overage back
+        if(quantity + total > maxEosPerCycle()){
+            asset refunded = quantity + total - maxEosPerCycle();
+            quantity = quantity - refunded;
+            INLINE_ACTION_SENDER(eosio::token, transfer)( N(eosio.token), {{_self,N(active)}}, {_self, t.from, refunded, "RIDL Over-Spend Refund"} );
+        }
+
+        setCycleData(cycle, total + quantity);
+
+        Claimables claimables(_self, t.from);
+        auto iter = claimables.find(cycle);
+        if(iter == claimables.end()) claimables.emplace(_self, [&](auto& row){
+                row.cycle = cycle;
+                row.tokens = quantity;
+            });
+        else claimables.modify(iter, 0, [&](auto& row){
+                row.tokens += quantity;
+            });
+    }
+
     void receivedTokens( const currency::transfer& t, account_name code ) {
         if( code == _self ){
             print("Contract sent money to itself?");
@@ -170,10 +170,14 @@ public:
             return;
         }
 
+        if( action == N(buy) ){
+            eosio_assert(false, "Can't call buy directly");
+        }
+
         if( contract != _self ) return;
         auto& thiscontract = *this;
         switch( action ) {
-            EOSIO_API( scatterfunds, (start)(buy)(claim) )
+            EOSIO_API( scatterfunds, (start)(claim) )
         };
     }
 
