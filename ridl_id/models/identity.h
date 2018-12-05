@@ -19,20 +19,19 @@ namespace identity {
         uuid                    fingerprint;
         string                  username;
         public_key              key;
-        account_name            account;
+        name                    account;
         uint64_t                expires;
         checksum256             hash;
         uint8_t                 state;
-        eosio::asset            tokens;
+        asset                   tokens;
 
 
         uuid primary_key() const { return fingerprint; }
-        EOSLIB_SERIALIZE( Identity, (fingerprint)(username)(key)(account)(expires)(hash)(state)(tokens) )
 
         ~Identity(){}
         Identity(){}
 
-        Identity(string& _username, public_key& _key, account_name& _account){
+        Identity(string& _username, public_key& _key, name& _account){
             lower(_username);
             fingerprint = toUUID(_username);
             username = _username;
@@ -40,7 +39,7 @@ namespace identity {
             account = _account;
             expires = now() + (seconds_per_day * 365);
 
-            sha256((char *) &username, sizeof(username), &hash);
+            hash = sha256((char *) &username, sizeof(username));
         }
 
         /***
@@ -48,10 +47,7 @@ namespace identity {
          * @param sig
          */
         void prove( const signature& sig ) const {
-            assert_recover_key( &hash,
-                                (const char*)&sig, sizeof(sig),
-                                (const char*)key.data,
-                                sizeof(key) );
+            assert_recover_key( hash, sig, key );
         }
     };
 
@@ -68,12 +64,11 @@ namespace identity {
         vector<string>          usernames;
 
         uint64_t primary_key() const { return key; }
-        EOSLIB_SERIALIZE( NameReference, (key)(usernames) )
     };
 
 
-    typedef eosio::multi_index<N(ids),   Identity>              Identities;
-    typedef eosio::multi_index<N(namerefs),   NameReference>    NameReferences;
+    typedef eosio::multi_index<"ids"_n,   Identity>              Identities;
+    typedef eosio::multi_index<"namerefs"_n,   NameReference>    NameReferences;
 
 
 

@@ -19,7 +19,6 @@ namespace reputation {
         uint64_t        count;
 
         uuid primary_key() const { return fingerprint; }
-        EOSLIB_SERIALIZE( RepTypeVote, (fingerprint)(type)(count) )
     };
 
     // @abi table reptypes
@@ -28,7 +27,6 @@ namespace reputation {
         string              type;
 
         uuid primary_key() const { return fingerprint; }
-        EOSLIB_SERIALIZE( RepTypes, (fingerprint)(type) )
 
         ~RepTypes(){}
         RepTypes(){}
@@ -43,8 +41,8 @@ namespace reputation {
         asset       down;
 
         void assertValid(){
-            eosio_assert(up.symbol == string_to_symbol(4, "RIDL"), "Reputes must be paid in RIDL");
-            eosio_assert(down.symbol == string_to_symbol(4, "RIDL"), "Reputes must be paid in RIDL");
+            eosio_assert(up.symbol == S_RIDL, "Reputes must be paid in RIDL");
+            eosio_assert(down.symbol == S_RIDL, "Reputes must be paid in RIDL");
             eosio_assert(up.is_valid(), "Token asset is not valid");
             eosio_assert(down.is_valid(), "Token asset is not valid");
             eosio_assert(up.amount > 0 || down.amount > 0, "All reputation fragments must have either a positive or negative value");
@@ -78,8 +76,6 @@ namespace reputation {
             fingerprint = _fingerprint;
             total_reputes = 0;
         }
-
-        EOSLIB_SERIALIZE( Reputation, (fingerprint)(fragments)(total_reputes) )
 
         void mergeRepute( std::vector<ReputationFragment>& frags ){
             for( auto& frag : frags ){
@@ -122,11 +118,9 @@ namespace reputation {
             lower(_type);
             fingerprint = toUUID(_type);
             type = _type;
-            up = asset(0'0000, string_to_symbol(4, "REP"));
-            down = asset(0'0000, string_to_symbol(4, "REP"));
+            up = asset(0'0000, S_REP);
+            down = asset(0'0000, S_REP);
         }
-
-        EOSLIB_SERIALIZE( FragTotal, (fingerprint)(type)(up)(down) )
     };
 
 
@@ -139,16 +133,16 @@ namespace reputation {
     // @abi table fraglow
     struct assetmimic {
         int64_t      amount;
-        symbol_type  symbol;
+        symbol_code  symbol;
     };
 
-    typedef eosio::multi_index<N(typevoters),     Historical>               TypeVoters;
-    typedef eosio::multi_index<N(reptypevotes),   RepTypeVote>              ReputationTypeVotes;
-    typedef eosio::multi_index<N(reptypes),       RepTypes>                 ReputationTypes;
-    typedef eosio::singleton<N(reputations),      Reputation>               Reputations;
-    typedef eosio::singleton<N(mineowner), vector<ReputationFragment>>      MineOwnerRepute;
-    typedef eosio::singleton<N(ownedmines),vector<uuid>>                    OwnedMines;
-    typedef eosio::singleton<N(reptotal),         asset>                    RepTotal;
-    typedef eosio::singleton<N(fragtotal),        FragTotal>                FragTotals;
+    typedef eosio::multi_index<"typevoters"_n,     Historical>               TypeVoters;
+    typedef eosio::multi_index<"reptypevotes"_n,   RepTypeVote>              ReputationTypeVotes;
+    typedef eosio::multi_index<"reptypes"_n,       RepTypes>                 ReputationTypes;
+    typedef eosio::singleton<"reputations"_n,      Reputation>               Reputations;
+    typedef eosio::singleton<"mineowner"_n, vector<ReputationFragment>>      MineOwnerRepute;
+    typedef eosio::singleton<"ownedmines"_n,vector<uuid>>                    OwnedMines;
+    typedef eosio::singleton<"reptotal"_n,         asset>                    RepTotal;
+    typedef eosio::singleton<"fragtotal"_n,        FragTotal>                FragTotals;
 
 }

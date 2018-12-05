@@ -25,10 +25,10 @@ namespace reputable {
         uuid            fingerprint;
         string          type;
         string          entity;
-        account_name    miner;
+        name    miner;
         uint64_t        miner_til;
-        account_name    last_reputer;
-        account_name    owner;
+        name    last_reputer;
+        name    owner;
 
         void merge( const RepEntity& r ){
             miner_til = r.miner_til;

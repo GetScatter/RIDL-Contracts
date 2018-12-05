@@ -16,8 +16,8 @@ using std::vector;
 
 class ReputationActions {
 public:
-    account_name __self;
-    ReputationActions(account_name self):__self(self){}
+    name __self;
+    ReputationActions(name self):__self(self){}
 
 
     void repute(string& username, string& entity, vector<ReputationFragment>& fragments){
@@ -107,7 +107,7 @@ public:
          * Getting the old REP total for this entity, and it's payer.
          */
         asset repTotal = RepTotal(__self, fingerprint).get_or_default(asset(0'0000, string_to_symbol(4, "REP")));
-        account_name repTotalPayer = RepTotal(__self, fingerprint).exists() ? 0 : id->account;
+        name repTotalPayer = RepTotal(__self, fingerprint).exists() ? 0 : id->account;
 
 
         /***

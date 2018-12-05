@@ -13,11 +13,11 @@ using namespace reputation;
 
 class IdentityActions {
 public:
-    account_name __self;
-    IdentityActions(account_name self):__self(self){}
+    name __self;
+    IdentityActions(name self):__self(self){}
 
     // Identifies a new user or re-registers an existing user
-    void identify(string& username, public_key& key, account_name& account){
+    void identify(string& username, public_key& key, name& account){
         require_auth(account);
 
         // Constructing new identity
@@ -26,7 +26,7 @@ public:
         // Name is valid
         assertValidName(identity.username);
 
-        PaidNames paidNames(__self, __self);
+        PaidNames paidNames(__self, __self.value);
         auto paid = paidNames.find(identity.fingerprint);
 
         // Assertions
@@ -43,7 +43,7 @@ public:
         string f = "user::"+username;
         uuid repFingerprint = toUUID(f);
 
-        asset repTotal = RepTotal(__self, repFingerprint).get_or_default(asset(0'0000, string_to_symbol(4, "REP")));
+        asset repTotal = RepTotal(__self, repFingerprint).get_or_default(asset(0'0000, S_REP));
         RepTotal(__self, repFingerprint).set(repTotal, account);
 
         // TODO: Deferred 1 year transaction to erase
@@ -59,10 +59,10 @@ public:
      * @param account
      * @param sig
      */
-    void release(uuid& fingerprint, account_name& account, signature& sig){
+    void release(uuid& fingerprint, name& account, signature& sig){
         require_auth(account);
 
-        Identities identities(__self, __self);
+        Identities identities(__self, __self.value);
         auto identity = identities.find(fingerprint);
         assertExists(identities, identity, account);
 
@@ -90,10 +90,10 @@ public:
      * @param account
      * @param new_key
      */
-    void rekey(uuid& fingerprint, account_name& account, public_key& new_key){
+    void rekey(uuid& fingerprint, name& account, public_key& new_key){
         require_auth(account);
 
-        Identities identities(__self, __self);
+        Identities identities(__self, __self.value);
         auto identity = identities.find(fingerprint);
         assertExists(identities, identity, account);
 
@@ -110,13 +110,13 @@ public:
      * @param new_account
      * @param sig
      */
-    void setaccount(uuid& fingerprint, account_name& new_account, signature& sig){
-        Identities identities(__self, __self);
+    void setaccount(uuid& fingerprint, name& new_account, signature& sig){
+        Identities identities(__self, __self.value);
         auto identity = identities.find(fingerprint);
         eosio_assert(identity != identities.end(), "Identity does not exist");
         identity->prove(sig);
 
-        identities.modify(identity, 0, [&](auto& record){
+        identities.modify(identity, same_payer, [&](auto& record){
             record.account = new_account;
         });
     }
@@ -124,10 +124,10 @@ public:
 
 
     // TODO: Bid on an existing identity
-    void bid(string& username, account_name& bidder, asset& bid){}
+    void bid(string& username, name& bidder, asset& bid){}
 
     // TODO: Transfers an Identity ( Should be multi-sig so the recipient can claim using their identity's key )
-    void sell(string& username, account_name& owner, uuid& bid_id){}
+    void sell(string& username, name& owner, uuid& bid_id){}
 
 
 
@@ -153,13 +153,13 @@ public:
      * @param sig - Signature from reservation linked key
      * @param account
      */
-    void claim(string& username, public_key& key, signature& sig, account_name& account){
+    void claim(string& username, public_key& key, signature& sig, name& account){
         require_auth(account);
 
         lower(username);
         uuid fingerprint = toUUID(username);
 
-        Identities identities(__self, __self);
+        Identities identities(__self, __self.value);
         auto identity = identities.find(fingerprint);
         eosio_assert(identity != identities.end(), "Identity not seeded.");
         eosio_assert(identity->account == __self, "Identity already owned.");
@@ -173,9 +173,9 @@ public:
         });
     }
 
-    void loadedtokens( const currency::transfer& t ){
+    void loadedtokens( const transfer& t ){
         // Token Assertions
-        eosio_assert(t.quantity.symbol == string_to_symbol(4, "RIDL"), "Token must be RIDL");
+        eosio_assert(t.quantity.symbol == S_RIDL, "Token must be RIDL");
         eosio_assert(t.quantity.is_valid(), "Token asset is not valid");
         eosio_assert(t.quantity.amount > 0, "Not enough tokens");
 
@@ -184,41 +184,41 @@ public:
         std::vector<string> params = memoToApiParams(t.memo);
         eosio_assert(params.size() == 2, "Memo must have 2 parameters");
 
-        account_name account = string_to_name(params[0].c_str());
+        name account = name(params[0].c_str());
         string username = params[1].c_str();
 
         lower(username);
         uuid fingerprint = toUUID(username);
-        Identities identities(__self, __self);
+        Identities identities(__self, __self.value);
         auto identity = identities.find(fingerprint);
         eosio_assert(identity != identities.end(), "Cannot transfer RIDL tokens to an Identity that does not exist");
 
         asset quantity = t.quantity + identity->tokens;
 
-        uint64_t reputationBonus = 100'0000 + RepTotal(__self, fingerprint).get_or_default(asset(0'0000, string_to_symbol(4, "REP"))).amount;
-        asset maxCanHold = asset(reputationBonus, string_to_symbol(4, "RIDL"));
+        uint64_t reputationBonus = 100'0000 + RepTotal(__self, fingerprint).get_or_default(asset(0'0000, S_REP)).amount;
+        asset maxCanHold = asset(reputationBonus, S_RIDL);
 
         // Too much was spent, sending the overage back
         if(quantity > maxCanHold){
             asset refunded = quantity - maxCanHold;
             quantity = quantity - refunded;
-            INLINE_ACTION_SENDER(ridl::token, transfer)( N(ridlridlcoin), {{__self,N(active)}}, {__self, t.from, refunded, "RIDL Over-Loaded Refund"} );
+            INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{__self,"active"_n}}, {__self, t.from, refunded, "RIDL Over-Loaded Refund"} );
         }
 
         eosio_assert(quantity.amount > 0, "Identity is already holding max RIDL");
 
-        identities.modify(identity, 0, [&](auto& record){
+        identities.modify(identity, same_payer, [&](auto& record){
             record.tokens = quantity;
         });
     }
 
-    void paidForIdentity( const currency::transfer& t ){
+    void paidForIdentity( const transfer& t ){
 
         // TODO: Set as config var or get from oracle
         int64_t price = 1'0000;
 
         // Token Assertions
-        eosio_assert(t.quantity.symbol == string_to_symbol(4, "EOS"), "Token must be EOS");
+        eosio_assert(t.quantity.symbol == S_EOS, "Token must be EOS");
         eosio_assert(t.quantity.is_valid(), "Token asset is not valid");
         eosio_assert(t.quantity.amount >= price, "Not enough tokens");
 
@@ -228,7 +228,7 @@ public:
         eosio_assert(params.size() == 2, "Memo must have 2 parameters");
 
         // Receiver account must exist on the blockchain
-        account_name account = string_to_name(params[0].c_str());
+        name account = name(params[0].c_str());
         eosio_assert(is_account(account), "Receiving account does not exist");
 
         // Identity name formatting and assertions.
@@ -237,12 +237,12 @@ public:
         uuid fingerprint = toUUID(params[1]);
 
         // Name must be unique and unregistered
-        Identities identities(__self, __self);
+        Identities identities(__self, __self.value);
         auto previousIdentity = identities.find(fingerprint);
         eosio_assert(previousIdentity == identities.end() || now() > previousIdentity->expires, "Identity already exists and is not expired.");
 
         // Name must not be in pay system
-        PaidNames paidNames(__self, __self);
+        PaidNames paidNames(__self, __self.value);
         auto previousPayment = paidNames.find(fingerprint);
         eosio_assert(previousPayment == paidNames.end() || now() > previousPayment->expires, "Identity already paid for.");
 
@@ -261,7 +261,7 @@ private:
      * @param fingerprint
      */
     void releaseIdentityPayment(uuid& fingerprint){
-        PaidNames paidNames(__self, __self);
+        PaidNames paidNames(__self, __self.value);
         auto row = paidNames.find(fingerprint);
         if(row != paidNames.end()) paidNames.erase(row);
     }
@@ -273,7 +273,7 @@ private:
      * @param account - The account to check for
      * @param primaryOnly - Check against the primary account only
      */
-    void assertExists(Identities& identities, Identities::const_iterator& identity, account_name& account){
+    void assertExists(Identities& identities, Identities::const_iterator& identity, name& account){
         eosio_assert(identity != identities.end(), "Identity does not exist");
         eosio_assert(identity->account == account, "Identity does not belong to specified account");
 
@@ -282,7 +282,7 @@ private:
 
     void createOrUpdateIdentity(Identity& identity, int64_t tokens = 20'0000){
         // Existence
-        Identities identities(__self, __self);
+        Identities identities(__self, __self.value);
         auto existingIdentity = identities.find(identity.fingerprint);
         eosio_assert(existingIdentity == identities.end() || now() > existingIdentity->expires, "Identity already registered.");
 
@@ -293,12 +293,12 @@ private:
                 record = identity;
                 record.state = 0;
 
-                record.tokens = asset(tokens, string_to_symbol(4, "RIDL"));
+                record.tokens = asset(tokens, S_RIDL);
                 // TODO: HANDLE RIDL RESERVES
 //                INLINE_ACTION_SENDER(ridl::token, transfer)( N(ridlridlcoin), {{__self,N(active)}}, {N(ridlreserves), identity.account, record.tokens, "RIDL Over-Loaded Refund"} );
 
                 if(identity.account != __self) {
-                    INLINE_ACTION_SENDER(ridl::token, transfer)(N(ridlridlcoin), {{__self, N(active)}},
+                    INLINE_ACTION_SENDER(ridl::token, transfer)("ridlridlcoin"_n, {{__self, "active"_n}},
                                                                 {__self, identity.account, record.tokens,
                                                                  "RIDL Over-Loaded Refund"});
                 }
