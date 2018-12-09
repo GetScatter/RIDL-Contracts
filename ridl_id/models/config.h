@@ -4,16 +4,16 @@ using std::vector;
 
 namespace config {
 
-    struct Config {
-        name        custodian;
-        name        token_account;
+    struct [[eosio::table, eosio::contract("ridlridlridl")]] configs {
+        checksum256             hash;
 
-        Config(){}
-        Config(name _custodian){
-            custodian = _custodian;
-        }
     };
 
-    typedef singleton<"configs"_n, Config>   Configs;
+
+    typedef singleton<"configs"_n, configs>   Configs;
+
+
+
+
 
 }

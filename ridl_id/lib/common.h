@@ -16,9 +16,14 @@ namespace common {
     static const symbol S_RIDL = symbol("RIDL", 4);
     static const symbol S_REP = symbol("REP", 4);
     static const symbol S_EOS = symbol("SYS", 4);
-
-
     static const uint64_t seconds_per_day(86400);
+
+    // sha256 of "ridl"
+    static const checksum256 ridlHash = sha256("ridl", 4);
+
+    static void prove( const signature& sig, const public_key& key ) {
+        assert_recover_key(ridlHash, sig, key);
+    }
 
     inline static uuid toUUID(string& username){
         return std::hash<string>{}(username);
@@ -28,15 +33,10 @@ namespace common {
         std::transform(anycase.begin(), anycase.end(), anycase.begin(), ::tolower);
     }
 
-    void assertValidName(string& username){
-        string error = "Identity names must be between 3 and 20 characters, and contain only Letters, Numbers, - _ and no spaces.";
-        eosio_assert(username.length() >= 3 && username.length() <= 20, error.c_str());
-        for ( char c : username ) eosio_assert(isalnum(c) || c == '-' || c == '_', error.c_str());
-    }
-
     template <typename T>
-    void cleanTable(name self){
-        T db(self, self);
+    void cleanTable(name self, name scope = name("")){
+        name s = scope ? scope : self;
+        T db(self, scope.value);
         while(db.begin() != db.end()){
             auto itr = --db.end();
             db.erase(itr);
@@ -63,7 +63,7 @@ namespace common {
     }
 
     asset ridlToRep( asset& a ){
-        return asset(a.amount, symbol("REP", 4));
+        return asset(a.amount, S_REP);
     }
 
     struct transfer {

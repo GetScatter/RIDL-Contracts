@@ -10,66 +10,45 @@ using std::string;
 
 namespace identity {
 
-    // States:
-    // 0 Reputing
-    // 1 Transferring
-
-    // @abi table ids
-    struct Identity {
+    struct [[eosio::table, eosio::contract("ridlridlridl")]] Identity {
         uuid                    fingerprint;
         string                  username;
         public_key              key;
         name                    account;
         uint64_t                expires;
-        checksum256             hash;
-        uint8_t                 state;
         asset                   tokens;
-
+        asset                   total_rep;
 
         uuid primary_key() const { return fingerprint; }
-
-        ~Identity(){}
-        Identity(){}
-
-        Identity(string& _username, public_key& _key, name& _account){
-            lower(_username);
-            fingerprint = toUUID(_username);
-            username = _username;
-            key = _key;
-            account = _account;
-            expires = now() + (seconds_per_day * 365);
-
-            hash = sha256((char *) &username, sizeof(username));
-        }
-
-        /***
-         * Proves that a signature came from someone who owns this Identity's private key.
-         * @param sig
-         */
-        void prove( const signature& sig ) const {
-            assert_recover_key( hash, sig, key );
-        }
+        uint64_t by_account() const {return account.value; }
     };
 
 
+    static Identity create(string& username, const public_key& key, const name& account){
+        lower(username);
+
+        Identity id;
+        id.fingerprint = toUUID(username);
+        id.username = username;
+        id.key = key;
+        id.account = account;
+        id.expires = now() + (seconds_per_day * 365);
+        id.total_rep = asset(0'0000, S_REP);
+
+        return id;
+
+    }
+
+    static void validateName(string& username){
+        string error = "Identity names must be between 3 and 20 characters, and contain only Letters, Numbers, - _ and no spaces.";
+        eosio_assert(username.length() >= 3 && username.length() <= 20, error.c_str());
+        for ( char c : username ) eosio_assert(isalnum(c) || c == '-' || c == '_', error.c_str());
+    }
 
 
-
-
-
-
-    // @abi table namerefs
-    struct NameReference {
-        uuid                    key;
-        vector<string>          usernames;
-
-        uint64_t primary_key() const { return key; }
-    };
-
-
-    typedef eosio::multi_index<"ids"_n,   Identity>              Identities;
-    typedef eosio::multi_index<"namerefs"_n,   NameReference>    NameReferences;
-
+    typedef eosio::multi_index<"ids"_n, Identity,
+        indexed_by<"account"_n, const_mem_fun<Identity, uint64_t, &Identity::by_account>>
+        > Identities;
 
 
 

@@ -16,314 +16,233 @@ using std::vector;
 
 class ReputationActions {
 public:
-    name __self;
-    ReputationActions(name self):__self(self){}
+    name _self;
+    ReputationActions(name self):_self(self){}
 
 
     void repute(string& username, string& entity, vector<ReputationFragment>& fragments){
-
-        /***
-         * Validating & Formatting Parameters
-         */
+        ///////////////////////////////////
+        // Assertions and formatting
         eosio_assert(username.size() > 0, "Identity is invalid");
         eosio_assert(entity.size() > 0, "Entity is invalid");
-        eosio_assert(fragments.size() <= 8 && fragments.size() > 0, "Only 1-8 reputation fragments are allowed");
+        eosio_assert(fragments.size() <= 5 && fragments.size() > 0, "Only 1-5 reputation fragments are allowed");
         for(auto& frag : fragments) frag.assertValid();
         lower(username);
         lower(entity);
-        uuid fingerprint = toUUID(entity);
 
-        /***
-         * Validating and proving reputer
-         */
-        Identities identities(__self, __self);
+
+        ///////////////////////////////////
+        // Identity verification
+        Identities identities(_self, _self.value);
         auto id = identities.find(toUUID(username));
         eosio_assert(id != identities.end(), "Identity does not exist");
         require_auth(id->account);
 
+        ///////////////////////////////////
+        // Calculate total RIDL used
+        asset ridlUsed = asset(0'0000, S_RIDL);
+        for(auto& frag : fragments) ridlUsed += (frag.up + frag.down);
+        eosio_assert(id->tokens.amount >= ridlUsed.amount, "Not enough RIDL for repute.");
 
-        /***
-         * Creating / Updating Reputable Entity
-         */
-        RepEntity reputable(entity);
-        Reputables reputables(__self, __self);
-        auto existing = reputables.find(fingerprint);
-        std::map<string, bool> minerFragments;
 
-        // Reputable already has a mine owner
-        if(existing != reputables.end() && existing->miner_til > now()) {
-            // Merging existing entity into entity
-            reputable.merge(*existing);
 
-            // Setting next last_reputer
-            reputable.last_reputer = (reputable.last_reputer != id->account)
-                                     ? id->account
-                                     : 0;
+        RepEntity reputable = reputable::create(entity);
+        Reputables reputables(_self, _self.value);
+        auto existing = reputables.find(reputable.fingerprint);
 
-            // Updating Row
-            reputables.modify(existing, 0, [&](auto& record){ record = reputable; });
 
-            // Setting up miner fragments for payout
-            vector<ReputationFragment> frags = MineOwnerRepute(__self, fingerprint).get();
-            for(auto& frag : frags) minerFragments[frag.type] = frag.isPositive();
-        }
+        if(reputable.type == "id"){
+            auto reputingIdentity = identities.find(toUUID(reputable.entity));
+            eosio_assert(reputingIdentity != identities.end(), "Identity does not exist");
 
-        // Reputable is a new entity
-        else {
-            if(reputable.miner){
-                // Removing previous owner from their own owned mines
-                vector<uuid> owned = OwnedMines(__self, reputable.miner).get_or_default(vector<uuid>());
-                owned.erase(std::remove(owned.begin(), owned.end(), fingerprint), owned.end());
-                OwnedMines(__self, reputable.miner).set(owned, reputable.miner);
-            }
+            asset totalRep = asset(0'0000, S_REP);
+            for(auto& frag : fragments) totalRep += (ridlToRep(frag.up) - ridlToRep(frag.down));
 
-
-            // Setting first or next reputer as owner
-            reputable.miner = id->account;
-
-            // Setting row
-            reputables.emplace(id->account, [&](auto& record){ record = reputable; });
-
-            // Setting up miner fragments for future payouts
-            MineOwnerRepute(__self, fingerprint).set(fragments, id->account);
-
-
-
-
-            // Adding mine to owner their owned mines
-            vector<uuid> owned = OwnedMines(__self, id->account).get_or_default(vector<uuid>());
-            owned.push_back(fingerprint);
-            OwnedMines(__self, id->account).set(owned, id->account);
-        }
-
-
-        /***
-         * Getting the old reputation or creating a zeroed out reputation.
-         */
-        Reputation reputation = Reputations(__self, fingerprint).get_or_default(Reputation(fingerprint));
-
-
-        /***
-         * Getting the old REP total for this entity, and it's payer.
-         */
-        asset repTotal = RepTotal(__self, fingerprint).get_or_default(asset(0'0000, string_to_symbol(4, "REP")));
-        name repTotalPayer = RepTotal(__self, fingerprint).exists() ? 0 : id->account;
-
-
-        /***
-         * Calculating Mine Owner Tax and Total RIDL Used
-         */
-        asset minerTax = asset(0'0000, string_to_symbol(4, "RIDL"));
-        asset ridlUsed = asset(0'0000, string_to_symbol(4, "RIDL"));
-
-
-        ReputationTypes reputationTypes(__self, __self);
-
-        for(auto& frag : fragments){
-            eosio_assert(reputationTypes.find(toUUID(frag.type)) != reputationTypes.end(), "One of the fragment types does not exist");
-
-            repTotal += ridlToRep(frag.up) - ridlToRep(frag.down);
-            ridlUsed += frag.up + frag.down;
-
-            /***
-             * Updating the global fragment totals
-             */
-            updateFragmentTotals(frag);
-
-            /***
-             * Calculating miner tax from fragments
-             */
-            auto it = minerFragments.find(frag.type);
-            if(it != minerFragments.end()){
-                asset res(((float)(frag.isPositive() ? frag.up : frag.down).amount) * 0.1, string_to_symbol(4, "RIDL"));
-                if((frag.matches(it->second))) minerTax += res;
-                else minerTax -= res;
-            }
-        }
-
-        eosio_assert(ridlUsed <= id->tokens, "Not enough available RIDL on this Identity for this Repute.");
-
-
-        /***
-         * Setting the new reputation
-         */
-        reputation.mergeRepute(fragments);
-        reputation.total_reputes += 1;
-        Reputations(__self, fingerprint).set(reputation, reputable.miner);
-
-
-
-        /***
-         * Updating the total rep across all fragments for this entity
-         */
-        RepTotal(__self, fingerprint).set(repTotal, repTotalPayer);
-
-
-        /***
-         * Issuing Repute Taxes
-         */
-        asset remainingRIDL = ridlUsed;
-        asset fivePercent(((float)ridlUsed.amount * 0.05), string_to_symbol(4, "RIDL"));
-        string memo = "RIDL Mined - " + entity;
-
-        /***
-         * RIDL Reserves Tax
-         */
-        INLINE_ACTION_SENDER(ridl::token, transfer)( N(ridlridlcoin), {{__self,N(active)}}, {__self, N(ridlreserves), fivePercent, "RIDL Tax"} );
-        remainingRIDL -= fivePercent;
-
-        /***
-         * Last Reputer Tax
-         */
-        if(existing->last_reputer && existing->last_reputer != id->account && is_account(existing->last_reputer)){
-            INLINE_ACTION_SENDER(ridl::token, transfer)( N(ridlridlcoin), {{__self,N(active)}}, {__self, existing->last_reputer, fivePercent, memo} );
-            remainingRIDL -= fivePercent;
-        }
-
-        /***
-         * Mine Owner
-         */
-        if(existing->miner && minerTax.amount > 0){
-            INLINE_ACTION_SENDER(ridl::token, transfer)( N(ridlridlcoin), {{__self,N(active)}}, {__self, existing->miner, minerTax, memo} );
-            remainingRIDL -= minerTax;
-        }
-
-        /***
-         * If this reputable has an owner then
-         * sending the remaining RIDL to the owner
-         * otherwise sending to reserves
-         */
-        if(reputable.owner)
-             INLINE_ACTION_SENDER(ridl::token, transfer)( N(ridlridlcoin), {{__self,N(active)}}, {__self, reputable.owner, remainingRIDL, "Reputed"} );
-        else INLINE_ACTION_SENDER(ridl::token, transfer)( N(ridlridlcoin), {{__self,N(active)}}, {__self, N(ridlreserves), remainingRIDL, "Reputed unclaimed entity"} );
-
-
-        // Reducing the identity's RIDL
-        identities.modify(id, 0, [&](auto& record){ record.tokens -= ridlUsed; });
-    }
-
-
-
-    void unrepute( string& username, string& entity ){
-        eosio_assert(username.size() > 0, "Identity is invalid");
-        eosio_assert(entity.size() > 0, "Entity is invalid");
-
-        lower(username);
-        lower(entity);
-        uuid fingerprint = toUUID(entity);
-
-        Identities identities(__self, __self);
-        auto id = identities.find(toUUID(username));
-        eosio_assert(id != identities.end(), "Identity does not exist");
-        require_auth(id->account);
-
-        RepEntity reputable(entity);
-        Reputables reputables(__self, __self);
-        auto existing = reputables.find(fingerprint);
-
-        eosio_assert(existing != reputables.end(), "This reputable entity does not exist");
-        eosio_assert(RepTotal(__self, fingerprint).exists(), "This entity does not have any REP");
-
-        asset minerRepTotal(0'0000, string_to_symbol(4, "REP"));
-        asset repTotal = RepTotal(__self, fingerprint).get();
-        vector<ReputationFragment> frags = MineOwnerRepute(__self, fingerprint).get();
-
-        for(auto& frag : frags) minerRepTotal += ridlToRep(frag.up) - ridlToRep(frag.down);
-        print("Miner rep total: ", minerRepTotal, " | ");
-        print("Rep total: ", repTotal, " | ");
-        eosio_assert(minerRepTotal.amount == repTotal.amount, "Others have already reputed this entity");
-
-        vector<uuid> owned = OwnedMines(__self, id->account).get_or_default(vector<uuid>());
-        owned.erase(std::remove(owned.begin(), owned.end(), fingerprint), owned.end());
-        OwnedMines(__self, id->account).set(owned, id->account);
-
-        reputables.erase(existing);
-        MineOwnerRepute(__self, fingerprint).remove();
-        RepTotal(__self, fingerprint).remove();
-
-        for(auto& frag : frags){
-            uuid fragTypeFingerprint = toUUID(frag.type);
-            if(FragTotals(__self, fragTypeFingerprint).exists()){
-                FragTotal fragTotal = FragTotals(__self, fragTypeFingerprint).get_or_default(FragTotal(frag.type));
-                fragTotal.up -= ridlToRep(frag.up);
-                fragTotal.down -= ridlToRep(frag.down);
-                FragTotals(__self, fragTypeFingerprint).set(fragTotal, __self);
-            }
-        }
-    }
-
-
-    void votetype( string& username, string& type ){
-        uuid fingerprint = toUUID(type);
-        uuid idprint = toUUID(username);
-
-        string idtype = username + type;
-        uuid idtypeprint = toUUID(idtype);
-
-        Identities identities(__self, __self);
-        auto id = identities.find(idprint);
-        eosio_assert(id != identities.end(), "Identity does not exist");
-        require_auth(id->account);
-
-        asset userRep = RepTotal(__self, idprint).get_or_default(asset(0'0000, string_to_symbol(4, "REP")));
-        eosio_assert(userRep.amount > 1000, "Type voters must have 1000+ total REP");
-
-        ReputationTypes reputationTypes(__self, __self);
-        auto existing = reputationTypes.find(fingerprint);
-        eosio_assert(existing == reputationTypes.end(), "Type already exists in available types");
-
-        ReputationTypeVotes reputationTypeVotes(__self, __self);
-        auto typeVote = reputationTypeVotes.find(fingerprint);
-
-        TypeVoters typeVoters(__self, idtypeprint);
-
-        if(typeVote == reputationTypeVotes.end()) reputationTypeVotes.emplace(id->account, [&](auto& record){
-            record.fingerprint = fingerprint;
-            record.type = type;
-            record.count = 1;
-            typeVoters.emplace(id->account, [&](auto& r){ r.fingerprint = idprint; });
-        });
-        else {
-            if(typeVote->count+1 >= 20){
-                // Erasing all voters
-                while(typeVoters.begin() != typeVoters.end()){
-                    auto iter = --typeVoters.end();
-                    typeVoters.erase(iter);
-                }
-
-                // Adding new type
-                reputationTypes.emplace(__self, [&](auto& r){
-                    r.fingerprint = fingerprint;
-                    r.type = type;
-                });
-
-                // Removing vote-able type
-                reputationTypeVotes.erase(typeVote);
-            }
-
-            // Not enough votes yet, incrementing
-            else reputationTypeVotes.modify(typeVote, 0, [&](auto& record){
-                auto voted = typeVoters.find(idprint);
-                if(voted != typeVoters.end()){
-                    record.count -= 1;
-                    typeVoters.erase(voted);
-                } else {
-                    record.count += 1;
-                    typeVoters.emplace(id->account, [&](auto& r){ r.fingerprint = idprint; });
-                }
+            identities.modify(reputingIdentity, same_payer, [&](auto& row){
+                row.total_rep += totalRep;
             });
         }
+
+
+        ///////////////////////////////////
+        // New reputable
+        if(existing == reputables.end()){
+            reputable.miner = id->account;
+            reputable.miner_frags = fragments;
+            reputables.emplace(id->account, [&](auto& row){ row = reputable; });
+        }
+
+        ///////////////////////////////////
+        // Existing reputable
+        else {
+            reputable.merge(*existing);
+
+            // Setting new miner
+            if(!existing->miner || existing->miner_til < now()){
+                    reputable.miner = id->account;
+                    reputable.miner_til = now() + (seconds_per_day * 30);
+                    reputable.miner_frags = fragments;
+                    reputable.last_reputer = name("");
+            } else {
+                    reputable.last_reputer = (reputable.last_reputer != id->account)
+                                             ? id->account
+                                             : name("");
+            }
+
+            reputables.modify(existing, same_payer, [&](auto& row){ row = reputable; });
+        }
+
+        ///////////////////////////////////
+        // Calculating Tax and adding globals
+        asset minerTax = asset(0'0000, S_RIDL);
+        for(auto& frag : fragments) {
+            updateFragmentTotals(frag);
+
+            if(existing->miner != id->account){
+                asset tax(((float)(frag.isPositive() ? frag.up : frag.down).amount) * 0.1, S_RIDL);
+                if(reputable.hasMinerFragment(frag)) minerTax += tax;
+                else minerTax -= tax;
+            }
+        }
+
+
+
+        ///////////////////////////////////
+        // Getting the old reputation or creating a zeroed out reputation.
+        Reputation reputation = Reputations(_self, reputable.fingerprint)
+            .get_or_default(reputation::createReputation(reputable.fingerprint));
+
+        // Setting the new reputation
+        reputation.mergeRepute(fragments);
+        reputation.total_reputes += 1;
+        Reputations(_self, reputable.fingerprint).set(reputation, reputable.miner);
+
+
+
+
+
+//
+//        /***
+//         * Issuing Repute Taxes
+//         */
+//        asset remainingRIDL = ridlUsed;
+//        asset fivePercent(((float)ridlUsed.amount * 0.05), S_RIDL);
+//        string memo = "RIDL Mined - " + entity;
+//
+//        /***
+//         * RIDL Reserves Tax
+//         */
+//        INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}},
+//                {_self, "ridlreserves"_n, fivePercent, "RIDL Tax"} );
+//        remainingRIDL -= fivePercent;
+//
+//        /***
+//         * Last Reputer Tax
+//         */
+//        if(existing->last_reputer && existing->last_reputer != id->account && is_account(existing->last_reputer)){
+//            INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}},
+//                    {_self, existing->last_reputer, fivePercent, memo} );
+//            remainingRIDL -= fivePercent;
+//        }
+//
+//        /***
+//         * Mine Owner
+//         */
+//        if(existing->miner && minerTax.amount > 0){
+//            INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}},
+//                    {_self, existing->miner, minerTax, memo} );
+//            remainingRIDL -= minerTax;
+//        }
+//
+//        /***
+//         * If this reputable has an owner then
+//         * sending the remaining RIDL to the owner
+//         * otherwise sending to reserves
+//         */
+//        if(reputable.owner)
+//             INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}},
+//                     {_self, reputable.owner, remainingRIDL, "Reputed"} );
+//        else INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}},
+//                {_self, "ridlreserves"_n, remainingRIDL, "Reputed unclaimed entity"} );
+//
+//
+//        // Reducing the identity's RIDL
+        identities.modify(id, same_payer, [&](auto& row){ row.tokens -= ridlUsed; });
     }
 
+//
+//
+//    void votetype( string& username, string& type ){
+//        uuid fingerprint = toUUID(type);
+//        uuid idprint = toUUID(username);
+//
+//        string idtype = username + type;
+//        uuid idtypeprint = toUUID(idtype);
+//
+//        Identities identities(_self, _self.value);
+//        auto id = identities.find(idprint);
+//        eosio_assert(id != identities.end(), "Identity does not exist");
+//        require_auth(id->account);
+//
+//        asset userRep = RepTotal(_self, idprint.value).get_or_default(asset(0'0000, S_REP));
+//        eosio_assert(userRep.amount > 1000, "Type voters must have 1000+ total REP");
+//
+//        ReputationTypes reputationTypes(_self, _self.value);
+//        auto existing = reputationTypes.find(fingerprint);
+//        eosio_assert(existing == reputationTypes.end(), "Type already exists in available types");
+//
+//        ReputationTypeVotes reputationTypeVotes(_self, _self.value);
+//        auto typeVote = reputationTypeVotes.find(fingerprint);
+//
+//        TypeVoters typeVoters(_self, idtypeprint);
+//
+//        if(typeVote == reputationTypeVotes.end()) reputationTypeVotes.emplace(id->account, [&](auto& row){
+//            row.fingerprint = fingerprint;
+//            row.type = type;
+//            row.count = 1;
+//            typeVoters.emplace(id->account, [&](auto& r){ r.fingerprint = idprint; });
+//        });
+//        else {
+//            if(typeVote->count+1 >= 20){
+//                // Erasing all voters
+//                while(typeVoters.begin() != typeVoters.end()){
+//                    auto iter = --typeVoters.end();
+//                    typeVoters.erase(iter);
+//                }
+//
+//                // Adding new type
+//                reputationTypes.emplace(_self, [&](auto& r){
+//                    r.fingerprint = fingerprint;
+//                    r.type = type;
+//                });
+//
+//                // Removing vote-able type
+//                reputationTypeVotes.erase(typeVote);
+//            }
+//
+//            // Not enough votes yet, incrementing
+//            else reputationTypeVotes.modify(typeVote, same_payer, [&](auto& row){
+//                auto voted = typeVoters.find(idprint);
+//                if(voted != typeVoters.end()){
+//                    row.count -= 1;
+//                    typeVoters.erase(voted);
+//                } else {
+//                    row.count += 1;
+//                    typeVoters.emplace(id->account, [&](auto& r){ r.fingerprint = idprint; });
+//                }
+//            });
+//        }
+//    }
+//
     void forcetype(string& type){
-        require_auth(__self);
+        require_auth(_self);
 
         uuid fingerprint = toUUID(type);
 
-        ReputationTypes reputationTypes(__self, __self);
+        ReputationTypes reputationTypes(_self, _self.value);
         auto iter = reputationTypes.find(fingerprint);
         if(iter != reputationTypes.end()) reputationTypes.erase(iter);
-        else reputationTypes.emplace(__self, [&](auto& r){
+        else reputationTypes.emplace(_self, [&](auto& r){
             r.fingerprint = fingerprint;
             r.type = type;
         });
@@ -334,10 +253,10 @@ private:
     void updateFragmentTotals( ReputationFragment& frag ){
         uuid fingerprint = toUUID(frag.type);
 
-        FragTotal fragTotal = FragTotals(__self, fingerprint).get_or_default(FragTotal(frag.type));
+        FragTotal fragTotal = FragTotals(_self, fingerprint).get_or_default(reputation::createFragTotal(frag.type));
         fragTotal.up += ridlToRep(frag.up);
         fragTotal.down += ridlToRep(frag.down);
-        FragTotals(__self, fingerprint).set(fragTotal, __self);
+        FragTotals(_self, fingerprint).set(fragTotal, _self);
     }
 
 

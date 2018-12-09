@@ -12,28 +12,7 @@ using std::string;
 
 namespace reputation {
 
-    // @abi table reptypevotes
-    struct RepTypeVote {
-        uuid            fingerprint;
-        string          type;
-        uint64_t        count;
 
-        uuid primary_key() const { return fingerprint; }
-    };
-
-    // @abi table reptypes
-    struct RepTypes {
-        uuid                fingerprint;
-        string              type;
-
-        uuid primary_key() const { return fingerprint; }
-
-        ~RepTypes(){}
-        RepTypes(){}
-        RepTypes(uuid _fingerprint){
-            fingerprint = _fingerprint;
-        }
-    };
 
     struct ReputationFragment {
         string      type;
@@ -55,7 +34,7 @@ namespace reputation {
 
         bool matches( bool& otherIsUp ){
             return (isPositive() > 0   && otherIsUp)
-                || (!isPositive() > 0  && !otherIsUp);
+                   || (!isPositive() > 0  && !otherIsUp);
         }
 
         void toRepFrag(){
@@ -64,18 +43,31 @@ namespace reputation {
         }
     };
 
-    // @abi table reputations
-    struct Reputation {
+
+
+
+
+
+    struct [[eosio::table, eosio::contract("ridlridlridl")]] NewRepType {
+        uuid            fingerprint;
+        string          type;
+        vector<name>    up;
+        vector<name>    down;
+
+        uuid primary_key() const { return fingerprint; }
+    };
+
+    struct [[eosio::table, eosio::contract("ridlridlridl")]] RepTypes {
+        uuid                fingerprint;
+        string              type;
+
+        uuid primary_key() const { return fingerprint; }
+    };
+
+    struct [[eosio::table, eosio::contract("ridlridlridl")]] Reputation {
         uuid                            fingerprint;
         vector<ReputationFragment>      fragments;
         int64_t                         total_reputes;
-
-        ~Reputation(){}
-        Reputation(){}
-        Reputation(uuid _fingerprint){
-            fingerprint = _fingerprint;
-            total_reputes = 0;
-        }
 
         void mergeRepute( std::vector<ReputationFragment>& frags ){
             for( auto& frag : frags ){
@@ -83,7 +75,13 @@ namespace reputation {
                 frag.toRepFrag();
 
                 // Frag exists
-                auto found = std::find_if(fragments.begin(), fragments.end(), [type](const ReputationFragment & f) -> bool { return f.type == type; });
+                auto found = std::find_if(
+                    fragments.begin(),
+                    fragments.end(),
+                    [type](const ReputationFragment & f) -> bool
+                    { return f.type == type; }
+                );
+
                 if(found != fragments.end()){
                     found->up += frag.up;
                     found->down += frag.down;
@@ -95,54 +93,42 @@ namespace reputation {
         }
     };
 
-
-    // @abi table vote
-    struct Historical {
-        uuid        fingerprint;
-        string      data;
-
-        uuid primary_key() const { return fingerprint; }
-        EOSLIB_SERIALIZE( Historical, (fingerprint)(data) )
-    };
-
-    // @abi table fragtotal
-    struct FragTotal {
+    struct [[eosio::table, eosio::contract("ridlridlridl")]] FragTotal {
         uuid        fingerprint;
         string      type;
         asset       up;
         asset       down;
-
-        ~FragTotal(){}
-        FragTotal(){}
-        FragTotal(string& _type){
-            lower(_type);
-            fingerprint = toUUID(_type);
-            type = _type;
-            up = asset(0'0000, S_REP);
-            down = asset(0'0000, S_REP);
-        }
     };
 
 
-    /***
-     * Using a fake asset to build tables for
-     * asset based singletons
-     */
-    // @abi table reptotal
-    // @abi table fraghigh
-    // @abi table fraglow
-    struct assetmimic {
-        int64_t      amount;
-        symbol_code  symbol;
-    };
 
-    typedef eosio::multi_index<"typevoters"_n,     Historical>               TypeVoters;
-    typedef eosio::multi_index<"reptypevotes"_n,   RepTypeVote>              ReputationTypeVotes;
+
+
+    static Reputation createReputation(uuid fingerprint){
+        Reputation r;
+        r.fingerprint = fingerprint;
+        r.total_reputes = 0;
+        return r;
+    }
+
+    static FragTotal createFragTotal(string& type){
+        lower(type);
+        FragTotal f;
+        f.fingerprint = toUUID(type);
+        f.type = type;
+        f.up = asset(0'0000, S_REP);
+        f.down = asset(0'0000, S_REP);
+        return f;
+    }
+
+
+    typedef eosio::multi_index<"newreptypes"_n,    NewRepType>               NewRepTypes;
     typedef eosio::multi_index<"reptypes"_n,       RepTypes>                 ReputationTypes;
     typedef eosio::singleton<"reputations"_n,      Reputation>               Reputations;
-    typedef eosio::singleton<"mineowner"_n, vector<ReputationFragment>>      MineOwnerRepute;
-    typedef eosio::singleton<"ownedmines"_n,vector<uuid>>                    OwnedMines;
-    typedef eosio::singleton<"reptotal"_n,         asset>                    RepTotal;
     typedef eosio::singleton<"fragtotal"_n,        FragTotal>                FragTotals;
 
+
+    // Temp fix for issue with singletons not getting proper names
+    typedef eosio::multi_index<"reputations"_n,      Reputation>             Reputations_alias;
+    typedef eosio::multi_index<"fragtotal"_n,        FragTotal>              FragTotals_alias;
 }
