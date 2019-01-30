@@ -20,6 +20,7 @@ if [ "$#" -eq 0 ]; then
     cleos push action ridlridlcoin create '[]' -p ridlridlcoin
     cleos push action ridlridlcoin transfer '["scatterfunds", "test1account", "100000.0000 RIDL", ""]' -p scatterfunds
     cleos transfer eosio test1account "100000.0000 EOS" "" -p eosio
+    cleos transfer eosio test1account "100000.0000 SYS" "" -p eosio
 
     # RIDL Contract Setup
     ridl_id/scripts/set.sh
