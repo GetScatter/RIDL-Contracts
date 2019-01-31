@@ -5,6 +5,7 @@
 #include "./reputation.h"
 using namespace types;
 using namespace common;
+using namespace reputation;
 
 using std::vector;
 using std::string;

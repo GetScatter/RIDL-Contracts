@@ -50,6 +50,7 @@ namespace reputation {
 
     struct [[eosio::table, eosio::contract("ridlridlridl")]] NewRepType {
         uuid            fingerprint;
+        uuid            base;
         string          type;
         vector<name>    up;
         vector<name>    down;
@@ -60,8 +61,10 @@ namespace reputation {
     struct [[eosio::table, eosio::contract("ridlridlridl")]] RepTypes {
         uuid                fingerprint;
         string              type;
+        uuid                base;
 
         uuid primary_key() const { return fingerprint; }
+        uuid by_base() const { return base; }
     };
 
     struct [[eosio::table, eosio::contract("ridlridlridl")]] Reputation {
@@ -123,7 +126,11 @@ namespace reputation {
 
 
     typedef eosio::multi_index<"newreptypes"_n,    NewRepType>               NewRepTypes;
-    typedef eosio::multi_index<"reptypes"_n,       RepTypes>                 ReputationTypes;
+    typedef eosio::multi_index<"reptypes"_n,       RepTypes,
+            indexed_by<"base"_n,    const_mem_fun<RepTypes, uint64_t, &RepTypes::by_base>>>
+                                                                             ReputationTypes;
+
+
     typedef eosio::singleton<"reputations"_n,      Reputation>               Reputations;
     typedef eosio::singleton<"fragtotal"_n,        FragTotal>                FragTotals;
 

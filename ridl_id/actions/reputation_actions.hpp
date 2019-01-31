@@ -26,10 +26,20 @@ public:
         eosio_assert(username.size() > 0, "Identity is invalid");
         eosio_assert(entity.size() > 0, "Entity is invalid");
         eosio_assert(fragments.size() <= 5 && fragments.size() > 0, "Only 1-5 reputation fragments are allowed");
-        for(auto& frag : fragments) frag.assertValid();
+
         lower(username);
         lower(entity);
+        uuid entityFingerprint = toUUID(entity);
 
+        ///////////////////////////////////
+        // Fragment validation
+        ReputationTypes reputationTypes(_self, _self.value);
+        for(auto& frag : fragments) {
+            frag.assertValid();
+            bool isGlobal = reputationTypes.find(toUUID(frag.type)) != reputationTypes.end();
+            bool isBased =  reputationTypes.find(toUUID(entity+frag.type)) != reputationTypes.end();
+            eosio_assert(isGlobal || isBased, "Fragment type is not available");
+        }
 
         ///////////////////////////////////
         // Identity verification
@@ -44,15 +54,16 @@ public:
         for(auto& frag : fragments) ridlUsed += (frag.up + frag.down);
         eosio_assert(id->tokens.amount >= ridlUsed.amount, "Not enough RIDL for repute.");
 
-
-
+        ///////////////////////////////////
+        // Get or create entity
         RepEntity reputable = reputable::create(entity);
         Reputables reputables(_self, _self.value);
         auto existing = reputables.find(reputable.fingerprint);
 
-
+        ///////////////////////////////////
+        // Identity reputing validation
         if(reputable.type == "id"){
-            auto reputingIdentity = identities.find(toUUID(reputable.entity));
+            auto reputingIdentity = identities.find(entityFingerprint);
             eosio_assert(reputingIdentity != identities.end(), "Identity does not exist");
 
             asset totalRep = asset(0'0000, S_REP);
@@ -62,7 +73,6 @@ public:
                 row.total_rep += totalRep;
             });
         }
-
 
         ///////////////////////////////////
         // New reputable
@@ -104,8 +114,6 @@ public:
                 else minerTax -= tax;
             }
         }
-
-
 
         ///////////////////////////////////
         // Getting the old reputation or creating a zeroed out reputation.
@@ -234,10 +242,11 @@ public:
 //        }
 //    }
 //
-    void forcetype(string& type){
+    void forcetype(string& type, string& base){
         require_auth(_self);
 
-        uuid fingerprint = toUUID(type);
+        uuid fingerprint = toUUID(base == "" ? type : base+type);
+        uuid basePrint = base == "" ? 0 : toUUID(base);
 
         ReputationTypes reputationTypes(_self, _self.value);
         auto iter = reputationTypes.find(fingerprint);
@@ -245,6 +254,7 @@ public:
         else reputationTypes.emplace(_self, [&](auto& r){
             r.fingerprint = fingerprint;
             r.type = type;
+            r.base = basePrint;
         });
     }
 

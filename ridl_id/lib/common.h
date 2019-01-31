@@ -25,7 +25,7 @@ namespace common {
         assert_recover_key(ridlHash, sig, key);
     }
 
-    inline static uuid toUUID(string& username){
+    inline static uuid toUUID(string username){
         return std::hash<string>{}(username);
     }
 

@@ -127,8 +127,8 @@ public:
 //        ReputationActions(_self).votetype(username, type);
 //    }
 
-    ACTION forcetype(string& type){
-        ReputationActions(_self).forcetype(type);
+    ACTION forcetype(string& type, string& base){
+        ReputationActions(_self).forcetype(type,base);
     }
 
 
