@@ -15,6 +15,7 @@ namespace reputation {
 
 
     struct ReputationFragment {
+        uuid        fingerprint;
         string      type;
         asset       up;
         asset       down;

@@ -20,7 +20,6 @@ namespace reputable {
     }
 
     struct [[eosio::table, eosio::contract("ridlridlridl")]] RepEntity {
-        uuid                            id;
         uuid                            fingerprint;
         string                          type;
         string                          entity;
@@ -33,7 +32,6 @@ namespace reputable {
         asset                           total_rep;
 
         uuid primary_key() const { return fingerprint; }
-        uint64_t by_id() const { return id; }
         uint64_t by_owner() const { return owner.value; }
         uint64_t by_miner() const { return miner.value; }
 
@@ -77,7 +75,6 @@ namespace reputable {
     }
 
     typedef eosio::multi_index<"reputables"_n, RepEntity,
-        indexed_by<"id"_n, const_mem_fun<RepEntity, uint64_t, &RepEntity::by_id>>,
         indexed_by<"owner"_n, const_mem_fun<RepEntity, uint64_t, &RepEntity::by_owner>>,
         indexed_by<"miner"_n, const_mem_fun<RepEntity, uint64_t, &RepEntity::by_miner>>
         >  Reputables;

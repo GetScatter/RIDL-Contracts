@@ -1,8 +1,8 @@
 #!/bin/bash
 
 echo "-------------------"
-echo "Configs"
-cleos get table ridlridlridl ridlridlridl configs
+echo "RepTypes"
+cleos get table ridlridlridl ridlridlridl reptypes
 echo ""
 echo ""
 

@@ -42,9 +42,10 @@ public:
         // Fragment validation
         for(auto& frag : fragments) {
             frag.assertValid();
-            bool isGlobal = reputationTypes.find(toUUID(frag.type)) != reputationTypes.end();
-            bool isBased =  reputationTypes.find(toUUID(entity+frag.type)) != reputationTypes.end();
-            eosio_assert(isGlobal || isBased, "Fragment type is not available");
+            auto existingFrag = reputationTypes.find(frag.fingerprint);
+            eosio_assert(existingFrag != reputationTypes.end(), "Fragment type is not available");
+            eosio_assert(existingFrag->base == 0 || existingFrag->base == entityFingerprint, "Fragment does not belong to this entity");
+            eosio_assert(existingFrag->type == frag.type, "Fingerprint does not match type name");
         }
 
         ///////////////////////////////////
@@ -79,33 +80,9 @@ public:
         }
 
         ///////////////////////////////////
-        // New reputable
-        if(existing == reputables.end()){
-            reputable.id = reputables.available_primary_key();
-            reputable.miner = id->account;
-            reputable.miner_frags = fragments;
-            reputables.emplace(id->account, [&](auto& row){ row = reputable; });
-        }
-
-        ///////////////////////////////////
-        // Existing reputable
-        else {
-            reputable.merge(*existing);
-
-            // Setting new miner
-            if(!existing->miner || existing->miner_til < now()){
-                    reputable.miner = id->account;
-                    reputable.miner_til = now() + (seconds_per_day * 30);
-                    reputable.miner_frags = fragments;
-                    reputable.last_reputer = name("");
-            } else {
-                    reputable.last_reputer = (reputable.last_reputer != id->account)
-                                             ? id->account
-                                             : name("");
-            }
-
-            reputables.modify(existing, same_payer, [&](auto& row){ row = reputable; });
-        }
+        // Add or update reputable
+        if(existing == reputables.end()) createNewEntity(reputable, id, fragments);
+        else updateExistingEntity(reputable, existing, id, fragments);
 
         ///////////////////////////////////
         // Calculating Tax and adding globals
@@ -179,92 +156,13 @@ public:
 //                {_self, "ridlreserves"_n, remainingRIDL, "Reputed unclaimed entity"} );
 //
 //
-//        // Reducing the identity's RIDL
+        // Reducing the identity's RIDL
         identities.modify(id, same_payer, [&](auto& row){ row.tokens -= ridlUsed; });
     }
 
 
 
-    void createNewEntity(){
-
-    }
-
-    void reputeExistingEntity(){
-
-    }
-
-
-
-
-
-
-
-
-//
-//
-//    void votetype( string& username, string& type ){
-//        uuid fingerprint = toUUID(type);
-//        uuid idprint = toUUID(username);
-//
-//        string idtype = username + type;
-//        uuid idtypeprint = toUUID(idtype);
-//
-//        Identities identities(_self, _self.value);
-//        auto id = identities.find(idprint);
-//        eosio_assert(id != identities.end(), "Identity does not exist");
-//        require_auth(id->account);
-//
-//        asset userRep = RepTotal(_self, idprint.value).get_or_default(asset(0'0000, S_REP));
-//        eosio_assert(userRep.amount > 1000, "Type voters must have 1000+ total REP");
-//
-//        ReputationTypes reputationTypes(_self, _self.value);
-//        auto existing = reputationTypes.find(fingerprint);
-//        eosio_assert(existing == reputationTypes.end(), "Type already exists in available types");
-//
-//        ReputationTypeVotes reputationTypeVotes(_self, _self.value);
-//        auto typeVote = reputationTypeVotes.find(fingerprint);
-//
-//        TypeVoters typeVoters(_self, idtypeprint);
-//
-//        if(typeVote == reputationTypeVotes.end()) reputationTypeVotes.emplace(id->account, [&](auto& row){
-//            row.fingerprint = fingerprint;
-//            row.type = type;
-//            row.count = 1;
-//            typeVoters.emplace(id->account, [&](auto& r){ r.fingerprint = idprint; });
-//        });
-//        else {
-//            if(typeVote->count+1 >= 20){
-//                // Erasing all voters
-//                while(typeVoters.begin() != typeVoters.end()){
-//                    auto iter = --typeVoters.end();
-//                    typeVoters.erase(iter);
-//                }
-//
-//                // Adding new type
-//                reputationTypes.emplace(_self, [&](auto& r){
-//                    r.fingerprint = fingerprint;
-//                    r.type = type;
-//                });
-//
-//                // Removing vote-able type
-//                reputationTypeVotes.erase(typeVote);
-//            }
-//
-//            // Not enough votes yet, incrementing
-//            else reputationTypeVotes.modify(typeVote, same_payer, [&](auto& row){
-//                auto voted = typeVoters.find(idprint);
-//                if(voted != typeVoters.end()){
-//                    row.count -= 1;
-//                    typeVoters.erase(voted);
-//                } else {
-//                    row.count += 1;
-//                    typeVoters.emplace(id->account, [&](auto& r){ r.fingerprint = idprint; });
-//                }
-//            });
-//        }
-//    }
-//
-    void forcetype(string& type, string& base, string& up, string& down){
+    void forcetype(string& type, string& base, string& upTag, string& downTag){
         require_auth(_self);
 
         uuid fingerprint = toUUID(base == "" ? type : base+type);
@@ -277,20 +175,44 @@ public:
             r.fingerprint = fingerprint;
             r.type = type;
             r.base = basePrint;
-            r.upTag = up.size() == 0 ? "Good" : up;
-            r.downTag = down.size() == 0 ? "Bad" : down;
+            r.upTag = upTag.size() == 0 ? "Good" : upTag;
+            r.downTag = downTag.size() == 0 ? "Bad" : downTag;
         });
     }
 
 private:
 
-    void updateFragmentTotals( ReputationFragment& frag ){
-        uuid fingerprint = toUUID(frag.type);
 
-        FragTotal fragTotal = FragTotals(_self, fingerprint).get_or_default(reputation::createFragTotal(frag.type));
+
+    void createNewEntity(RepEntity& reputable, Identities::const_iterator& id, vector<ReputationFragment>& fragments){
+        reputable.miner = id->account;
+        reputable.miner_frags = fragments;
+        reputables.emplace(id->account, [&](auto& row){ row = reputable; });
+    }
+
+    void updateExistingEntity(RepEntity& reputable, Reputables::const_iterator& existing, Identities::const_iterator& id, vector<ReputationFragment>& fragments){
+        reputable.merge(*existing);
+
+        // Setting new miner
+        if(!existing->miner || existing->miner_til < now()){
+            reputable.miner = id->account;
+            reputable.miner_til = now() + (seconds_per_day * 30);
+            reputable.miner_frags = fragments;
+            reputable.last_reputer = name("");
+        } else {
+            reputable.last_reputer = (reputable.last_reputer != id->account)
+                                     ? id->account
+                                     : name("");
+        }
+
+        reputables.modify(existing, same_payer, [&](auto& row){ row = reputable; });
+    }
+
+    void updateFragmentTotals( ReputationFragment& frag ){
+        FragTotal fragTotal = FragTotals(_self, frag.fingerprint).get_or_default(reputation::createFragTotal(frag.type));
         fragTotal.up += ridlToRep(frag.up);
         fragTotal.down += ridlToRep(frag.down);
-        FragTotals(_self, fingerprint).set(fragTotal, _self);
+        FragTotals(_self, frag.fingerprint).set(fragTotal, _self);
     }
 
 
