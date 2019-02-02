@@ -62,6 +62,8 @@ namespace reputation {
         uuid                fingerprint;
         string              type;
         uuid                base;
+        string              upTag;
+        string              downTag;
 
         uuid primary_key() const { return fingerprint; }
         uuid by_base() const { return base; }

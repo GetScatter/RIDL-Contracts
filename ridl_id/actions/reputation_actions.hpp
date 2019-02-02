@@ -242,7 +242,7 @@ public:
 //        }
 //    }
 //
-    void forcetype(string& type, string& base){
+    void forcetype(string& type, string& base, string& up, string& down){
         require_auth(_self);
 
         uuid fingerprint = toUUID(base == "" ? type : base+type);
@@ -255,6 +255,8 @@ public:
             r.fingerprint = fingerprint;
             r.type = type;
             r.base = basePrint;
+            r.upTag = up.size() == 0 ? "Good" : up;
+            r.downTag = down.size() == 0 ? "Bad" : down;
         });
     }
 
