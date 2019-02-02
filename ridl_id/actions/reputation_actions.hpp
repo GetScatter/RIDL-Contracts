@@ -15,9 +15,16 @@ using std::string;
 using std::vector;
 
 class ReputationActions {
-public:
+private:
     name _self;
-    ReputationActions(name self):_self(self){}
+    ReputationTypes reputationTypes;
+    Reputables reputables;
+    Identities identities;
+public:
+    ReputationActions(name self):_self(self),
+        reputationTypes(_self, _self.value),
+        reputables(_self, _self.value),
+        identities(_self, _self.value){}
 
 
     void repute(string& username, string& entity, vector<ReputationFragment>& fragments){
@@ -33,7 +40,6 @@ public:
 
         ///////////////////////////////////
         // Fragment validation
-        ReputationTypes reputationTypes(_self, _self.value);
         for(auto& frag : fragments) {
             frag.assertValid();
             bool isGlobal = reputationTypes.find(toUUID(frag.type)) != reputationTypes.end();
@@ -43,7 +49,6 @@ public:
 
         ///////////////////////////////////
         // Identity verification
-        Identities identities(_self, _self.value);
         auto id = identities.find(toUUID(username));
         eosio_assert(id != identities.end(), "Identity does not exist");
         require_auth(id->account);
@@ -57,7 +62,6 @@ public:
         ///////////////////////////////////
         // Get or create entity
         RepEntity reputable = reputable::create(entity);
-        Reputables reputables(_self, _self.value);
         auto existing = reputables.find(reputable.fingerprint);
 
         ///////////////////////////////////
@@ -77,6 +81,7 @@ public:
         ///////////////////////////////////
         // New reputable
         if(existing == reputables.end()){
+            reputable.id = reputables.available_primary_key();
             reputable.miner = id->account;
             reputable.miner_frags = fragments;
             reputables.emplace(id->account, [&](auto& row){ row = reputable; });
@@ -177,6 +182,23 @@ public:
 //        // Reducing the identity's RIDL
         identities.modify(id, same_payer, [&](auto& row){ row.tokens -= ridlUsed; });
     }
+
+
+
+    void createNewEntity(){
+
+    }
+
+    void reputeExistingEntity(){
+
+    }
+
+
+
+
+
+
+
 
 //
 //
