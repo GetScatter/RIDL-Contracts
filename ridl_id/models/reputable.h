@@ -67,7 +67,7 @@ namespace reputable {
         r.fingerprint = toUUID(entity);
         r.type = entity.substr(0, entity.find("::", 0));
         r.entity = splitString(entity, "::")[1];
-        r.miner_til = now() + (seconds_per_day * 30);
+        r.miner_til = now() + (SECONDS_PER_DAY * 30);
 
         validateEntity(r.type, entity);
 

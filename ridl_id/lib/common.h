@@ -13,16 +13,16 @@ using std::vector;
 
 namespace common {
 
-    static const symbol S_RIDL = symbol("RIDL", 4);
-    static const symbol S_REP = symbol("REP", 4);
-    static const symbol S_EOS = symbol("SYS", 4);
-    static const uint64_t seconds_per_day(86400);
-
-    // sha256 of "ridl"
-    static const checksum256 ridlHash = sha256("ridl", 4);
+    // CONSTANTS
+    static const symbol         S_RIDL("RIDL", 4);
+    static const symbol         S_REP("REP", 4);
+    static const symbol         S_EOS("EOS", 4);
+    static const uint64_t       SECONDS_PER_DAY(86400);
+    static const uint64_t       TOPUP_DELAY(10);
+    static const checksum256    RIDL_HASH = sha256("ridl", 4);
 
     static void prove( const signature& sig, const public_key& key ) {
-        assert_recover_key(ridlHash, sig, key);
+        assert_recover_key(RIDL_HASH, sig, key);
     }
 
     inline static uuid toUUID(string username){
@@ -58,18 +58,15 @@ namespace common {
         return tokens;
     }
 
-    vector<string> memoToApiParams(const string& memo){
-        return splitString(memo, " ");
-    }
-
     asset ridlToRep( asset& a ){
         return asset(a.amount, S_REP);
     }
 
-    struct transfer {
-        name from;
-        name to;
-        asset quantity;
-        string memo;
-    };
+    void sendRIDL(name& from, name to, asset& quantity, string memo){
+        action( permission_level{ "ridlridlridl"_n, "active"_n },
+                name("ridlridlcoin"),
+                name("transfer"),
+                make_tuple(from, to, quantity, memo)
+        ).send();
+    }
 };

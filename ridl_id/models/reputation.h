@@ -1,12 +1,10 @@
 #pragma once
 
-#include <eosiolib/eosio.hpp>
 #include "../lib/types.h"
 #include "../lib/common.h"
 
 using namespace types;
 using namespace common;
-using namespace eosio;
 
 using std::string;
 

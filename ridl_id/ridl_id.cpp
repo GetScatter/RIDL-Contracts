@@ -4,7 +4,6 @@
 
 #include "lib/common.h"
 #include "models/identity.h"
-#include "models/config.h"
 #include "models/balances.h"
 
 
@@ -15,7 +14,6 @@
 
 using namespace eosio;
 using namespace identity;
-using namespace config;
 using namespace common;
 using namespace balances;
 
@@ -26,6 +24,10 @@ public:
     using contract::contract;
     ridlridlridl(name receiver, name code,  datastream<const char*> ds):contract(receiver, code, ds) {}
 
+    /***
+     * // TODO: TESTING ONLY
+     * ADMIN ONLY - Cleans all the tables
+     */
     ACTION clean(name scope){
         require_auth(_self);
 
@@ -49,20 +51,6 @@ public:
         cleanTable<Identities>(_self, _self);
         cleanTable<Balances>(_self, scope);
 //        cleanTable<ReputationTypeVotes>(_self);
-
-        Configs(_self, _self.value).remove();
-    }
-
-    /**********************************************/
-    /***                                        ***/
-    /***                Configs                 ***/
-    /***                                        ***/
-    /**********************************************/
-
-    ACTION setconfig( configs& config ){
-        require_auth(_self);
-
-        Configs(_self, _self.value).set(config, _self);
     }
 
 
@@ -76,37 +64,76 @@ public:
     /***                                        ***/
     /**********************************************/
 
-
+    /***
+     * Registers an identity for a given account and name
+     * @param account
+     * @param username
+     * @param key
+     * @return
+     */
     ACTION identify(const name& account, string& username, const public_key& key){
         IdentityActions(_self).identify(account, username, key);
     }
 
-    ACTION release(string& username, const signature& sig){
-        IdentityActions(_self).release(username, sig);
+    /***
+     * Changes the identity's public key
+     * @param username
+     * @param key
+     * @return
+     */
+    ACTION changekey(string& username, const public_key& key){
+        IdentityActions(_self).changekey(username, key);
     }
 
-    ACTION rekey(string& username, const public_key& key){
-        IdentityActions(_self).rekey(username, key);
+    /***
+     * Changes the identity's linked account
+     * @param username
+     * @param key
+     * @return
+     */
+    ACTION changeacc(string& username, name& account){
+        IdentityActions(_self).changeacc(username, account);
     }
 
-    ACTION setaccacc(string& username, const name& new_account){
-        IdentityActions(_self).setaccountacc(username, new_account);
-    }
-
-    ACTION setacckey(string& username, const name& new_account, const signature& sig){
-        IdentityActions(_self).setaccountkey(username, new_account, sig);
-    }
-
+    /***
+     * ADMIN ONLY - Adds a reserved identity to the table
+     * @param username
+     * @param key
+     * @return
+     */
     ACTION seed(string& username, const public_key& key){
         IdentityActions(_self).seed(username, key);
     }
 
+    /***
+     * Claims a reserved identity
+     * @param account
+     * @param username
+     * @param key
+     * @param sig
+     * @return
+     */
     ACTION claim(const name& account, string& username, const public_key& key, const signature& sig){
         IdentityActions(_self).claim(account, username, key, sig);
     }
 
-    ACTION loadtokens(const name& account, string& username, const asset& tokens){
-        IdentityActions(_self).loadtokens(account, username, tokens);
+    /***
+     * Loads tokens into an identity
+     * @param username
+     * @param tokens
+     * @return
+     */
+    ACTION topup(string& username, const asset& tokens){
+        IdentityActions(_self).topup(username, tokens);
+    }
+
+    /***
+     * Fallback for claiming topup
+     * @param username
+     * @return
+     */
+    ACTION applytopup(string& username){
+        IdentityActions(_self).claimtopup(username);
     }
 
 
@@ -119,16 +146,42 @@ public:
     /***                                        ***/
     /**********************************************/
 
+    /***
+     * Reputes an entity from a registered identity
+     * @param username
+     * @param entity
+     * @param fragments
+     * @param details (optional)
+     * @return
+     */
     ACTION repute(string& username, string& entity, std::vector<ReputationFragment>& fragments, const string& details){
         ReputationActions(_self).repute(username, entity, fragments);
     }
 
-//    ACTION votetype(string& username, string& type){
-//        ReputationActions(_self).votetype(username, type);
+    /***
+     * Votes a RepType into the database.
+     * @param username - Voter's identity name
+     * @param type - Type name
+     * @param base (optional) - Entity fingerprint
+     * @param upTag (optional)
+     * @param downTag (optional)
+     * @return
+     */
+//    ACTION votetype(string& username, string& type, string& base, string& upTag, string& downTag){
+//        ReputationActions(_self).votetype(username, type, base, upTag, downTag);
 //    }
 
-    ACTION forcetype(string& type, string& base, string& up, string& down){
-        ReputationActions(_self).forcetype(type,base,up,down);
+
+    /***
+     * ADMIN ONLY - Forces rep types into the table
+     * @param type - Type name
+     * @param base (optional) - Entity fingerprint
+     * @param upTag (optional)
+     * @param downTag (optional)
+     * @return
+     */
+    ACTION forcetype(string& type, string& base, string& upTag, string& downTag){
+        ReputationActions(_self).forcetype(type,base,upTag,downTag);
     }
 
 
@@ -153,7 +206,7 @@ void apply(uint64_t receiver, uint64_t code, uint64_t action) {
     auto self = receiver;
 
     if( code == self ) switch(action) {
-        EOSIO_DISPATCH_HELPER( ridlridlridl, (clean)(setconfig)(identify)(release)(rekey)(setaccacc)(setacckey)(seed)(claim)(loadtokens)(repute)(forcetype) )
+        EOSIO_DISPATCH_HELPER( ridlridlridl, (clean)(identify)(changekey)(changeacc)(seed)(claim)(topup)(applytopup)(repute)(forcetype) )
     }
 
     else {

@@ -13,6 +13,7 @@ using namespace identity;
 
 using std::string;
 using std::vector;
+using std::make_tuple;
 
 class ReputationActions {
 private:
@@ -52,7 +53,7 @@ public:
         // Identity verification
         auto id = identities.find(toUUID(username));
         eosio_assert(id != identities.end(), "Identity does not exist");
-        require_auth(id->account);
+        id->authenticate();
 
         ///////////////////////////////////
         // Calculate total RIDL used
@@ -66,23 +67,13 @@ public:
         auto existing = reputables.find(reputable.fingerprint);
 
         ///////////////////////////////////
-        // Identity reputing validation
-        if(reputable.type == "id"){
-            auto reputingIdentity = identities.find(entityFingerprint);
-            eosio_assert(reputingIdentity != identities.end(), "Identity does not exist");
-
-            asset totalRep = asset(0'0000, S_REP);
-            for(auto& frag : fragments) totalRep += (ridlToRep(frag.up) - ridlToRep(frag.down));
-
-            identities.modify(reputingIdentity, same_payer, [&](auto& row){
-                row.total_rep += totalRep;
-            });
-        }
-
-        ///////////////////////////////////
         // Add or update reputable
         if(existing == reputables.end()) createNewEntity(reputable, id, fragments);
         else updateExistingEntity(reputable, existing, id, fragments);
+
+        ///////////////////////////////////
+        // Identity reputing validation
+        if(reputable.type == "id") reputedIdentity(entityFingerprint, fragments);
 
         ///////////////////////////////////
         // Calculating Tax and adding globals
@@ -102,6 +93,7 @@ public:
         Reputation reputation = Reputations(_self, reputable.fingerprint)
             .get_or_default(reputation::createReputation(reputable.fingerprint));
 
+        ///////////////////////////////////
         // Setting the new reputation
         reputation.mergeRepute(fragments);
         reputation.total_reputes += 1;
@@ -109,54 +101,41 @@ public:
 
 
 
+        ///////////////////////////////////
+        // Issuing Repute Taxes
+        asset remainingRIDL = ridlUsed;
+        asset fivePercent(((float)ridlUsed.amount * 0.05), S_RIDL);
+        string memo = "RIDL Mined - " + entity;
 
+        ///////////////////////////////////
+        // RIDL Reserves Tax
+        sendRIDL(_self, "ridlreserves"_n, fivePercent, "RIDL Tax");
+        remainingRIDL -= fivePercent;
 
-//
-//        /***
-//         * Issuing Repute Taxes
-//         */
-//        asset remainingRIDL = ridlUsed;
-//        asset fivePercent(((float)ridlUsed.amount * 0.05), S_RIDL);
-//        string memo = "RIDL Mined - " + entity;
-//
-//        /***
-//         * RIDL Reserves Tax
-//         */
-//        INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}},
-//                {_self, "ridlreserves"_n, fivePercent, "RIDL Tax"} );
-//        remainingRIDL -= fivePercent;
-//
-//        /***
-//         * Last Reputer Tax
-//         */
-//        if(existing->last_reputer && existing->last_reputer != id->account && is_account(existing->last_reputer)){
-//            INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}},
-//                    {_self, existing->last_reputer, fivePercent, memo} );
-//            remainingRIDL -= fivePercent;
-//        }
-//
-//        /***
-//         * Mine Owner
-//         */
-//        if(existing->miner && minerTax.amount > 0){
-//            INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}},
-//                    {_self, existing->miner, minerTax, memo} );
-//            remainingRIDL -= minerTax;
-//        }
-//
-//        /***
-//         * If this reputable has an owner then
-//         * sending the remaining RIDL to the owner
-//         * otherwise sending to reserves
-//         */
-//        if(reputable.owner)
-//             INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}},
-//                     {_self, reputable.owner, remainingRIDL, "Reputed"} );
-//        else INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}},
-//                {_self, "ridlreserves"_n, remainingRIDL, "Reputed unclaimed entity"} );
-//
-//
-        // Reducing the identity's RIDL
+        ///////////////////////////////////
+        // Last reputer mined
+        if(existing->last_reputer && existing->last_reputer != id->account && is_account(existing->last_reputer)){
+            sendRIDL(_self, existing->last_reputer, fivePercent, memo);
+            remainingRIDL -= fivePercent;
+        }
+
+        ///////////////////////////////////
+        // Mine owner mined
+        if(existing->miner && minerTax.amount > 0){
+            sendRIDL(_self, existing->miner, minerTax, memo);
+            remainingRIDL -= minerTax;
+        }
+
+        /***
+         * If this reputable has an owner then
+         * sending the remaining RIDL to the owner
+         * otherwise sending to reserves
+         */
+        if(reputable.owner) sendRIDL(_self, reputable.owner, remainingRIDL, "Reputed");
+        else sendRIDL(_self, "ridlreserves"_n, remainingRIDL, "Reputed unclaimed entity");
+
+        ///////////////////////////////////
+        // Reducing the Identity's RIDL
         identities.modify(id, same_payer, [&](auto& row){ row.tokens -= ridlUsed; });
     }
 
@@ -196,7 +175,7 @@ private:
         // Setting new miner
         if(!existing->miner || existing->miner_til < now()){
             reputable.miner = id->account;
-            reputable.miner_til = now() + (seconds_per_day * 30);
+            reputable.miner_til = now() + (SECONDS_PER_DAY * 30);
             reputable.miner_frags = fragments;
             reputable.last_reputer = name("");
         } else {
@@ -206,6 +185,18 @@ private:
         }
 
         reputables.modify(existing, same_payer, [&](auto& row){ row = reputable; });
+    }
+
+    void reputedIdentity(uuid& entityFingerprint, vector<ReputationFragment>& fragments){
+        auto reputingIdentity = identities.find(entityFingerprint);
+        eosio_assert(reputingIdentity != identities.end(), "Identity does not exist");
+
+        asset totalRep = asset(0'0000, S_REP);
+        for(auto& frag : fragments) totalRep += (ridlToRep(frag.up) - ridlToRep(frag.down));
+
+        identities.modify(reputingIdentity, same_payer, [&](auto& row){
+            row.total_rep += totalRep;
+        });
     }
 
     void updateFragmentTotals( ReputationFragment& frag ){

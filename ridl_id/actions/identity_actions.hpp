@@ -1,7 +1,7 @@
 #pragma once
 
 #include <eosiolib/eosio.hpp>
-#include "../models/config.h"
+#include <eosiolib/transaction.hpp>
 #include "../models/identity.h"
 #include "../models/reputation.h"
 #include "../../ridl_token/ridl_token.hpp"
@@ -9,14 +9,19 @@
 #include "./balance_actions.hpp"
 
 using namespace eosio;
-using namespace config;
 using namespace identity;
 using namespace reputation;
 
 class IdentityActions {
-public:
+
+private:
     name _self;
-    IdentityActions(name self):_self(self){}
+    Identities identities;
+    Topups topups;
+public:
+    IdentityActions(name self):_self(self),
+        identities(_self, _self.value),
+        topups(_self, _self.value) {}
 
     // Identifies a new user or re-registers an existing user
     void identify(const name& account, string& username, const public_key& key){
@@ -25,14 +30,8 @@ public:
         // TODO: calc price from oracle/configs
         asset price(1'0000, S_EOS);
 
-        BalanceActions(_self).hasBalance(account, price);
-
         // Constructing new identity
-        Identity identity = identity::create(username, key, account);
-
-        // Name is valid
-        identity::validateName(identity.username);
-
+        Identity identity = Identity::create(username, key, account);
 
         // Set Identity
         createOrUpdateIdentity(identity);
@@ -46,36 +45,14 @@ public:
 //        RepTotal(_self, repFingerprint).set(repTotal, account);
 
 
-        // TODO: Only allow repayment starting 4 months from end of payment year ( makes sure users can't pay for 10 years at once )
-        // TODO: Allows users to repay their identity ( expires +1 year from previous ending date, not date of payment if renewed )
     }
 
 
-    void release(string& username, const signature& sig){
+    void changekey(string& username, const public_key& key){
         uuid fingerprint = toUUID(username);
-        Identities identities(_self, _self.value);
         auto identity = identities.find(fingerprint);
         eosio_assert(identity != identities.end(), "Identity does not exist");
-
-        require_auth(identity->account);
-        common::prove(sig, identity->key);
-
-        identities.erase(identity);
-
-        // TODO: Remove all reputation + reputation mines owned by user
-        // Some reputation pots will be locked in the user's RAM until the next user comes along if they
-        // haven't gotten rid of them yet. The only other way would be to release them to the contract itself
-        // but that could become an attack vector.
-    }
-
-
-    void rekey(string& username, const public_key& key){
-        uuid fingerprint = toUUID(username);
-        Identities identities(_self, _self.value);
-        auto identity = identities.find(fingerprint);
-        eosio_assert(identity != identities.end(), "Identity does not exist");
-
-        require_auth(identity->account);
+        identity->authenticate();
 
         identities.modify(identity, _self, [&](auto& record){
             record.key = key;
@@ -83,47 +60,23 @@ public:
     }
 
 
-    void setaccountacc(string& username, const name& new_account){
-        lower(username);
+    void changeacc(string& username, name& account){
         uuid fingerprint = toUUID(username);
-
-        Identities identities(_self, _self.value);
         auto identity = identities.find(fingerprint);
         eosio_assert(identity != identities.end(), "Identity does not exist");
-        require_auth(identity->account);
+        identity->authenticate();
 
         identities.modify(identity, _self, [&](auto& record){
-            record.account = new_account;
-        });
-    }
-
-    void setaccountkey(string& username, const name& new_account, const signature& sig){
-        lower(username);
-        uuid fingerprint = toUUID(username);
-
-        Identities identities(_self, _self.value);
-        auto identity = identities.find(fingerprint);
-        eosio_assert(identity != identities.end(), "Identity does not exist");
-        common::prove(sig, identity->key);
-
-        identities.modify(identity, _self, [&](auto& record){
-            record.account = new_account;
+            record.account = account;
         });
     }
 
 
-//    // TODO: Bid on an existing identity
-//    void bid(string& username, name& bidder, asset& bid){}
-//
-//    // TODO: Transfers an Identity ( Should be multi-sig so the recipient can claim using their identity's key )
-//    void sell(string& username, name& owner, uuid& bid_id){}
-//
-//
     void seed(string& username, const public_key& key){
         require_auth(_self);
 
-        Identity identity = identity::create(username, key, _self);
-        identity.expires = now() + ((seconds_per_day * 365) * 100);
+        Identity identity = Identity::create(username, key, _self);
+        identity.expires = now() + ((SECONDS_PER_DAY * 365) * 100);
         createOrUpdateIdentity(identity, 100'0000);
     }
 
@@ -134,7 +87,6 @@ public:
         lower(username);
         uuid fingerprint = toUUID(username);
 
-        Identities identities(_self, _self.value);
         auto identity = identities.find(fingerprint);
         eosio_assert(identity != identities.end(), "Identity not seeded.");
         eosio_assert(identity->account == _self, "Identity already owned.");
@@ -148,130 +100,110 @@ public:
         });
     }
 
-    void loadtokens(const name& account, string& username, const asset& tokens){
-        require_auth(account);
+    void topup(string& username, const asset& tokens){
         eosio_assert(tokens.symbol == S_RIDL, "Can only load RIDL tokens into an identity.");
-
-        BalanceActions(_self).hasBalance(account, tokens);
-        BalanceActions(_self).subBalance(account, tokens);
 
         lower(username);
         uuid fingerprint = toUUID(username);
-        Identities identities(_self, _self.value);
+
         auto identity = identities.find(fingerprint);
         eosio_assert(identity != identities.end(), "Cannot transfer RIDL tokens to an Identity that does not exist");
+        identity->authenticate();
 
+        // TODO: ADD IF EXISTING
+        auto existing = topups.find(fingerprint);
 
-        uint64_t reputationBonus = 100'0000 + (identity->total_rep.amount > 0 ? identity->total_rep.amount : 0);
-        asset maxCanHold = asset(reputationBonus, S_RIDL);
-
-        eosio_assert(identity->tokens < maxCanHold, "Already holding maximum RIDL in Identity");
-
-        asset quantity = tokens + identity->tokens;
+        asset maxCanHold = asset(100'0000 + (identity->total_rep.amount > 0 ? identity->total_rep.amount : 0), S_RIDL);
+        asset total = tokens + identity->tokens;
+        if(existing != topups.end()) total += existing->tokens;
+        asset remaining = tokens;
 
         // Too much was spent, sending the overage back
-        if(quantity > maxCanHold){
-            asset refunded = quantity - maxCanHold;
-            quantity = quantity - refunded;
-            INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}}, {_self, account, refunded, "RIDL Over-Loaded Refund"} );
+        if(total > maxCanHold){
+            asset refunded = total - maxCanHold;
+            remaining = remaining - refunded;
+            sendRIDL(_self, identity->account, refunded, "RIDL overload refund");
         }
 
-        eosio_assert(quantity.amount > 0, "Identity is already holding max RIDL");
+        eosio_assert(remaining.amount > 0, "Identity is already holding it's maximum RIDL capacity.");
+        BalanceActions(_self).subBalance(identity->account, tokens);
 
-        identities.modify(identity, _self, [&](auto& record){
-            record.tokens = quantity;
-        });
+        if(existing == topups.end()){
+            topups.emplace(_self, [&](auto& row){
+                row.fingerprint = fingerprint;
+                row.tokens = remaining;
+                row.claimable = now() + TOPUP_DELAY;
+            });
+        } else {
+            topups.modify(existing, same_payer, [&](auto& row){
+                row.tokens += remaining;
+                row.claimable = now() + TOPUP_DELAY;
+            });
+        }
+
+        transaction t;
+        t.actions.emplace_back(action( permission_level{ _self, "active"_n }, _self, name("applytopup"), make_tuple(username)));
+        t.delay_sec = TOPUP_DELAY;
+        t.send(fingerprint, _self, true);
     }
 
-//
-//
-//    void loadedtokens( const transfer& t ){
-//        // Token Assertions
-//        eosio_assert(t.quantity.symbol == S_RIDL, "Token must be RIDL");
-//        eosio_assert(t.quantity.is_valid(), "Token asset is not valid");
-//        eosio_assert(t.quantity.amount > 0, "Not enough tokens");
-//
-//        // Memo Assertions
-//        eosio_assert(t.memo.length() > 0, "Memo can not be empty");
-//        std::vector<string> params = memoToApiParams(t.memo);
-//        eosio_assert(params.size() == 2, "Memo must have 2 parameters");
-//
-//        name account = name(params[0].c_str());
-//        string username = params[1].c_str();
-//
-//        lower(username);
-//        uuid fingerprint = toUUID(username);
-//        Identities identities(_self, _self.value);
-//        auto identity = identities.find(fingerprint);
-//        eosio_assert(identity != identities.end(), "Cannot transfer RIDL tokens to an Identity that does not exist");
-//
-//        asset quantity = t.quantity + identity->tokens;
-//
-//        uint64_t reputationBonus = 100'0000 + RepTotal(_self, fingerprint).get_or_default(asset(0'0000, S_REP)).amount;
-//        asset maxCanHold = asset(reputationBonus, S_RIDL);
-//
-//        // Too much was spent, sending the overage back
-//        if(quantity > maxCanHold){
-//            asset refunded = quantity - maxCanHold;
-//            quantity = quantity - refunded;
-//            INLINE_ACTION_SENDER(ridl::token, transfer)( "ridlridlcoin"_n, {{_self,"active"_n}}, {_self, t.from, refunded, "RIDL Over-Loaded Refund"} );
-//        }
-//
-//        eosio_assert(quantity.amount > 0, "Identity is already holding max RIDL");
-//
-//        identities.modify(identity, _self, [&](auto& record){
-//            record.tokens = quantity;
-//        });
-//    }
-//
+    void applytopup(string& username){
+        lower(username);
+        uuid fingerprint = toUUID(username);
+        auto identity = identities.find(fingerprint);
+        eosio_assert(identity != identities.end(), "An Identity with that name does not exist.");
+
+        auto topup = topups.find(fingerprint);
+        eosio_assert(topup != topups.end(), "There is no pending topup for this Identity.");
+        eosio_assert(topup->claimable >= now(), "This Identity's topup is not yet available for use.");
+
+        identities.modify(identity, _self, [&](auto& record){
+            record.tokens += topup->tokens;
+        });
+        topups.erase(topup);
+    }
 
 private:
 
 
     void createOrUpdateIdentity(Identity& identity, int64_t tokens = 20'0000){
-        Identities identities(_self, _self.value);
         auto existingIdentity = identities.find(identity.fingerprint);
 
-        if(existingIdentity != identities.end()){
-            bool isExpired = now() > existingIdentity->expires;
-            bool isSameOwner = existingIdentity->account == identity.account;
-
-            if(!isSameOwner){
-                eosio_assert(!isExpired, "Identity exists and still is still being paid for.");
-            } else {
-                uint64_t threeMonthsFromEndingPeriod = existingIdentity->expires - (seconds_per_day * 90);
-                eosio_assert(isExpired || now() > threeMonthsFromEndingPeriod, "Can only re-purchase Identity for yourself within the last 90 days");
-
-                if(!isExpired){
-                    // Adding 365 days to the last expiration date
-                    identity.expires = existingIdentity->expires + (seconds_per_day * 365);
-                }
-            }
-        }
-
-
-        // Registering new identity
-        if(existingIdentity == identities.end()){
+        auto insertNewIdentity = [&](){
             identities.emplace(_self, [&](auto& record){
                 record = identity;
                 record.tokens = asset(tokens, S_RIDL);
 
                 // TODO: Need to move tokens from reserves to this contract.
             });
+        };
+
+        ///////////////////////////////////
+        // Repurchasing or new owner for existing identity
+        if(existingIdentity != identities.end()){
+            bool isExpired = now() > existingIdentity->expires;
+            bool isSameOwner = existingIdentity->account == identity.account;
+            uint64_t canRepurchase = now() > existingIdentity->expires - (SECONDS_PER_DAY * 90);
+
+            eosio_assert(isExpired || isSameOwner, ("Identity "+identity.username+" is already taken.").c_str());
+            eosio_assert(isExpired || (isSameOwner && canRepurchase), "Can only re-purchase Identity for yourself within the last 90 days.");
+
+            if(isSameOwner){
+                identities.modify(existingIdentity, _self, [&](auto& record){
+                    record.expires = existingIdentity->expires + (SECONDS_PER_DAY * 365);
+                });
+            } else {
+                // TODO: REMOVE OLD IDENTITY REPUTATION
+                identities.erase(existingIdentity);
+                insertNewIdentity();
+            }
+
+
         }
 
-        // Updating expired identity
-        else {
-            //TODO: If identity is not the same account owner need to replace reputation.
 
-            identities.modify(existingIdentity, _self, [&](auto& record){
-                if(existingIdentity->account == identity.account){
-                    record.expires = identity.expires;
-                } else {
-                    record = identity;
-                }
-            });
-        }
+        // Registering new identity
+        else insertNewIdentity();
     }
 
 };
