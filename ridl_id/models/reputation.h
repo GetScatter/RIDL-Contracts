@@ -64,9 +64,7 @@ namespace reputation {
             lower(downTag);
 
             RepType t;
-            // TODO: Fix
-//            t.fingerprint = toUUID(base == NO_HASH ? type : std::to_string(base.data())+type);
-            t.fingerprint = toUUID(type);
+            t.fingerprint = toUUID(base == 0 ? type : std::to_string(base)+type);
             t.type = type;
             t.base = base;
             t.upTag = upTag.size() == 0 ? "good" : upTag;

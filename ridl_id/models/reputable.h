@@ -41,15 +41,19 @@ namespace reputable {
 
         uuid primary_key() const { return id; }
         uuid by_name() const { return toUUID(entity); }
+        uint64_t by_fingerprint() const { return toUUID(type+entity+network+std::to_string(base)); }
         uint64_t by_owner() const { return owner.value; }
         uint64_t by_miner() const { return miner.value; }
 
         void merge( const Reputable& r ){
+            id = r.id;
             miner_til = r.miner_til;
             miner = r.miner;
             miner_frags = r.miner_frags;
             last_reputer = r.last_reputer;
+            last_repute_time = r.last_repute_time;
             owner = r.owner;
+            network = r.network;
         }
 
         bool hasMinerFragment( ReputationFragment& frag ){
@@ -87,6 +91,7 @@ namespace reputable {
 
     typedef eosio::multi_index<"reputables"_n, Reputable,
         indexed_by<"name"_n, const_mem_fun<Reputable, uint64_t, &Reputable::by_name>>,
+        indexed_by<"fingerprint"_n, const_mem_fun<Reputable, uint64_t, &Reputable::by_fingerprint>>,
         indexed_by<"owner"_n, const_mem_fun<Reputable, uint64_t, &Reputable::by_owner>>,
         indexed_by<"miner"_n, const_mem_fun<Reputable, uint64_t, &Reputable::by_miner>>
         >  Reputables;

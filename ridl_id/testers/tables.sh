@@ -22,7 +22,7 @@ echo ""
 echo ""
 
 echo "Reputation"
-cleos get table ridlridlridl 1 reputations
+cleos get table ridlridlridl 2 reputations
 
 echo "Topups"
 cleos get table ridlridlridl ridlridlridl topups

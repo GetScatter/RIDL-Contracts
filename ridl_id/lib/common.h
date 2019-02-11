@@ -17,8 +17,9 @@ namespace common {
     static const symbol         S_RIDL("RIDL", 4);
     static const symbol         S_REP("REP", 4);
     static const symbol         S_EOS("EOS", 4);
+    static const symbol         S_EXP("EXP", 4);
     static const uint64_t       SECONDS_PER_DAY(86400);
-    static const uint64_t       TOPUP_DELAY(10);
+    static const uint64_t       TOPUP_DELAY(1);
     static const checksum256    RIDL_HASH = sha256("ridl", 4);
     static const checksum256    NO_HASH = sha256("", 0);
 

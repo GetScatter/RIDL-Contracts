@@ -19,6 +19,7 @@ namespace identity {
         uint64_t                expires;
         asset                   tokens;
         asset                   total_rep;
+        asset                   expansion;
 
         uuid primary_key() const { return id; }
         uint64_t by_name() const {return fingerprint; }
@@ -37,6 +38,7 @@ namespace identity {
             id.account = account;
             id.expires = now() + (SECONDS_PER_DAY * 365);
             id.total_rep = asset(0'0000, S_REP);
+            id.expansion = asset(0'0000, S_EXP);
 
             return id;
         }

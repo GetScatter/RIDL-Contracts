@@ -222,7 +222,5 @@ void apply(uint64_t receiver, uint64_t code, uint64_t action) {
             execute_action(name(receiver), name(code), &ridlridlridl::transfer);
         }
     }
-
-
 }
 };

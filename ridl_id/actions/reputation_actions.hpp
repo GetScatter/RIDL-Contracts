@@ -36,7 +36,7 @@ public:
         reputables(_self, _self.value),
         identities(_self, _self.value){}
 
-    void repute(string& username, uuid& id, string& entity, string& type, vector<ReputationFragment>& fragments, string& network, uuid& parent){
+    void repute(string& username, uuid id, string& entity, string& type, vector<ReputationFragment>& fragments, string& network, uuid& parent){
         ///////////////////////////////////
         // Assertions and formatting
         eosio_assert(entity.size() > 0, "Entity is invalid");
@@ -48,8 +48,22 @@ public:
         ///////////////////////////////////
         // Get or create entity
         bool isNew = id == 0;
+
+        // Checks if an entity with the same fingerprint exists and
+        // just the ID wasn't sent
+        if(isNew) {
+            uint64_t fingerprint = toUUID(type+entity+network+std::to_string(parent));
+            auto index = reputables.get_index<"fingerprint"_n>();
+            auto existing = index.find(fingerprint);
+            if(existing != index.end()){
+                id = existing->id;
+                isNew = false;
+            }
+        }
+
         Reputable reputable = reputable::create(entity, type, network, parent);
         auto existingReputable = reputables.find(id);
+
         if(!isNew) eosio_assert(existingReputable != reputables.end(), ("There is no reputable with the ID "+std::to_string(id)).c_str());
 
         ///////////////////////////////////
@@ -58,7 +72,7 @@ public:
             frag.assertValid();
             auto existingFrag = reputationTypes.find(frag.fingerprint);
             eosio_assert(existingFrag != reputationTypes.end(), "Fragment type is not available");
-            eosio_assert(existingFrag->base == 0 || existingFrag->base == reputable.id, "Fragment does not belong to this entity");
+            eosio_assert(existingFrag->base == 0 || existingFrag->base == id, "Fragment does not belong to this entity");
             eosio_assert(existingFrag->type == frag.type, "Fingerprint does not match type name");
         }
 
@@ -157,13 +171,18 @@ public:
 
         ///////////////////////////////////
         // Reducing the Identity's RIDL
-        identities.modify(identity, same_payer, [&](auto& row){ row.tokens -= ridlUsed; });
+        identities.modify(identity, same_payer, [&](auto& row){
+            row.expansion = asset(row.expansion.amount + (ridlUsed.amount * 0.01), S_EXP);
+            row.tokens -= ridlUsed;
+        });
     }
 
 
 
     void forcetype(string& type, uuid& parent, string& upTag, string& downTag){
         require_auth(_self);
+
+        eosio_assert(parent == 0 || reputables.find(parent) != reputables.end(), ("There is no reputable with the ID: "+std::to_string(parent)).c_str());
 
         RepType repType = RepType::create(type, upTag, downTag, parent);
 
@@ -206,8 +225,8 @@ private:
         reputables.modify(existingReputable, same_payer, [&](auto& row){ row = reputable; });
     }
 
-    void reputedIdentity(uuid& entityFingerprint, vector<ReputationFragment>& fragments){
-        auto reputingIdentity = identities.find(entityFingerprint);
+    void reputedIdentity(uuid& id, vector<ReputationFragment>& fragments){
+        auto reputingIdentity = identities.find(id);
         eosio_assert(reputingIdentity != identities.end(), "Identity does not exist");
 
         asset totalRep = asset(0'0000, S_REP);

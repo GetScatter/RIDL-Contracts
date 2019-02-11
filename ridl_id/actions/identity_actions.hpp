@@ -69,6 +69,7 @@ public:
 
 
     void changeacc(string& username, name& account){
+        eosio_assert(account != _self, "Can't reset account to ridlridlridl");
         auto identity = findIdentity(username);
         eosio_assert(identity != identities.end(), "Identity does not exist");
         identity->authenticate();
@@ -114,7 +115,7 @@ public:
         // TODO: ADD IF EXISTING
         auto existing = topups.find(identity->fingerprint);
 
-        asset maxCanHold = asset(100'0000 + (identity->total_rep.amount > 0 ? identity->total_rep.amount : 0), S_RIDL);
+        asset maxCanHold = asset(100'0000 + (identity->total_rep.amount > 0 ? identity->total_rep.amount : 0) + (identity->expansion.amount > 0 ? identity->expansion.amount : 0), S_RIDL);
         asset total = tokens + identity->tokens;
         if(existing != topups.end()) total += existing->tokens;
         asset remaining = tokens;
