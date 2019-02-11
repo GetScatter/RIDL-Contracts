@@ -44,7 +44,7 @@ public:
         Reputables reputables(_self,_self.value);
         while(reputables.begin() != reputables.end()){
             auto iter = --reputables.end();
-            Reputations(_self, iter->fingerprint).remove();
+            Reputations(_self, iter->id).remove();
             reputables.erase(iter);
         }
 
@@ -149,39 +149,43 @@ public:
     /***
      * Reputes an entity from a registered identity
      * @param username
+     * @param id
      * @param entity
+     * @param type
      * @param fragments
-     * @param details (optional)
+     * @param network
+     * @param parent
+     * @param details
      * @return
      */
-    ACTION repute(string& username, string& entity, std::vector<ReputationFragment>& fragments, string& network_id, uuid& base, const string& details){
-        ReputationActions(_self).repute(username, entity, fragments, network_id, base);
+    ACTION repute(string& username, uuid& id, string& entity, string& type, vector<ReputationFragment>& fragments, string& network, uuid& parent, string& details){
+        ReputationActions(_self).repute(username, id, entity, type, fragments, network, parent);
     }
 
     /***
      * Votes a RepType into the database.
      * @param username - Voter's identity name
      * @param type - Type name
-     * @param base (optional) - Entity fingerprint
+     * @param parent (optional) - Entity fingerprint
      * @param upTag (optional)
      * @param downTag (optional)
      * @return
      */
-//    ACTION votetype(string& username, string& type, string& base, string& upTag, string& downTag){
-//        ReputationActions(_self).votetype(username, type, base, upTag, downTag);
+//    ACTION votetype(string& username, string& type, string& parent, string& upTag, string& downTag){
+//        ReputationActions(_self).votetype(username, type, parent, upTag, downTag);
 //    }
 
 
     /***
      * ADMIN ONLY - Forces rep types into the table
      * @param type - Type name
-     * @param base (optional) - Entity fingerprint
+     * @param parent (optional) - Entity fingerprint
      * @param upTag (optional)
      * @param downTag (optional)
      * @return
      */
-    ACTION forcetype(string& type, uuid& base, string& upTag, string& downTag){
-        ReputationActions(_self).forcetype(type,base,upTag,downTag);
+    ACTION forcetype(string& type, uuid& parent, string& upTag, string& downTag){
+        ReputationActions(_self).forcetype(type,parent,upTag,downTag);
     }
 
 

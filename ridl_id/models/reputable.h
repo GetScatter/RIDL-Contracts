@@ -20,14 +20,13 @@ namespace reputable {
         eosio_assert(entity.size() > 0, "Invalid entity");
     }
 
-    void validateNetwork(string& network_id, string& type){
-        eosio_assert(network_id.size() == 0 || type == "acc", "Only accounts/addresses/contracts can have a network ID");
-        eosio_assert(network_id.size() == 0 || network_id.find("::", 0) != std::string::npos, "Invalid Network ID. Networks must be in the following format: [blockchain::chain_id]");
+    void validateNetwork(string& network, string& type){
+        eosio_assert(network.size() == 0 || type == "acc", "Only accounts/addresses/contracts can have a network ID");
+        eosio_assert(network.size() == 0 || network.find("::", 0) != std::string::npos, "Invalid Network ID. Networks must be in the following format: [blockchain::chain_id]");
     }
 
-    struct [[eosio::table, eosio::contract("ridlridlridl")]] RepEntity {
-        uuid                            id;
-        uuid                            fingerprint;
+    struct [[eosio::table, eosio::contract("ridlridlridl")]] Reputable {
+        uint64_t                        id;
         string                          type;
         string                          entity;
         uuid                            base;
@@ -38,22 +37,19 @@ namespace reputable {
         name                            last_reputer;
         uint64_t                        last_repute_time;
         name                            owner;
-        asset                           total_rep;
-        string                          network_id;
+        string                          network;
 
-        uuid primary_key() const { return fingerprint; }
-        uuid by_id() const { return id; }
+        uuid primary_key() const { return id; }
         uuid by_name() const { return toUUID(entity); }
         uint64_t by_owner() const { return owner.value; }
         uint64_t by_miner() const { return miner.value; }
 
-        void merge( const RepEntity& r ){
+        void merge( const Reputable& r ){
             miner_til = r.miner_til;
             miner = r.miner;
             miner_frags = r.miner_frags;
             last_reputer = r.last_reputer;
             owner = r.owner;
-            total_rep += r.total_rep;
         }
 
         bool hasMinerFragment( ReputationFragment& frag ){
@@ -72,31 +68,27 @@ namespace reputable {
     };
 
 
-    static RepEntity create(string& entity, string& network_id, uuid& base){
+    static Reputable create(string& entity, string& type, string& network, uuid& base){
         lower(entity);
 
-        string fingermaker = entity + network_id + (base > 0 ? std::to_string(base) : "");
-
-        RepEntity r;
-        r.fingerprint = toUUID(fingermaker);
-        r.type = entity.substr(0, entity.find("::", 0));
-        r.entity = splitString(entity, "::")[1];
+        Reputable r;
+        r.type = type;
+        r.entity = entity;
         r.miner_til = now() + (SECONDS_PER_DAY * 30);
-        r.network_id = network_id;
+        r.network = network;
         r.base = base;
 
-        validateEntity(r.type, entity);
-        validateNetwork(r.network_id, r.type);
+        validateEntity(r.type, r.entity);
+        validateNetwork(r.network, r.type);
         if(r.type == "id") eosio_assert(base == 0, "Identity reputes can not be tiered.");
 
         return r;
     }
 
-    typedef eosio::multi_index<"reputables"_n, RepEntity,
-        indexed_by<"name"_n, const_mem_fun<RepEntity, uint64_t, &RepEntity::by_name>>,
-        indexed_by<"id"_n, const_mem_fun<RepEntity, uint64_t, &RepEntity::by_id>>,
-        indexed_by<"owner"_n, const_mem_fun<RepEntity, uint64_t, &RepEntity::by_owner>>,
-        indexed_by<"miner"_n, const_mem_fun<RepEntity, uint64_t, &RepEntity::by_miner>>
+    typedef eosio::multi_index<"reputables"_n, Reputable,
+        indexed_by<"name"_n, const_mem_fun<Reputable, uint64_t, &Reputable::by_name>>,
+        indexed_by<"owner"_n, const_mem_fun<Reputable, uint64_t, &Reputable::by_owner>>,
+        indexed_by<"miner"_n, const_mem_fun<Reputable, uint64_t, &Reputable::by_miner>>
         >  Reputables;
 
 }

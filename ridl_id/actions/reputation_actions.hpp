@@ -21,27 +21,36 @@ private:
     ReputationTypes reputationTypes;
     Reputables reputables;
     Identities identities;
+
+    auto findIdentity(string& username){
+        lower(username);
+        auto index = identities.get_index<"name"_n>();
+        auto found = index.find(toUUID(username));
+        eosio_assert(found != index.end(), ("Could not find username: "+username).c_str());
+        return identities.find(found->id);
+    }
+
 public:
     ReputationActions(name self):_self(self),
         reputationTypes(_self, _self.value),
         reputables(_self, _self.value),
         identities(_self, _self.value){}
 
-
-    void repute(string& username, string& entity, vector<ReputationFragment>& fragments, string& network_id, uuid& base){
+    void repute(string& username, uuid& id, string& entity, string& type, vector<ReputationFragment>& fragments, string& network, uuid& parent){
         ///////////////////////////////////
         // Assertions and formatting
-        eosio_assert(username.size() > 0, "Identity is invalid");
         eosio_assert(entity.size() > 0, "Entity is invalid");
         eosio_assert(fragments.size() <= 5 && fragments.size() > 0, "Only 1-5 reputation fragments are allowed");
 
-        lower(username);
         lower(entity);
-        lower(network_id);
+        lower(network);
 
         ///////////////////////////////////
         // Get or create entity
-        RepEntity reputable = reputable::create(entity, network_id, base);
+        bool isNew = id == 0;
+        Reputable reputable = reputable::create(entity, type, network, parent);
+        auto existingReputable = reputables.find(id);
+        if(!isNew) eosio_assert(existingReputable != reputables.end(), ("There is no reputable with the ID "+std::to_string(id)).c_str());
 
         ///////////////////////////////////
         // Fragment validation
@@ -49,28 +58,27 @@ public:
             frag.assertValid();
             auto existingFrag = reputationTypes.find(frag.fingerprint);
             eosio_assert(existingFrag != reputationTypes.end(), "Fragment type is not available");
-            eosio_assert(existingFrag->base == 0 || existingFrag->base == reputable.fingerprint, "Fragment does not belong to this entity");
+            eosio_assert(existingFrag->base == 0 || existingFrag->base == reputable.id, "Fragment does not belong to this entity");
             eosio_assert(existingFrag->type == frag.type, "Fingerprint does not match type name");
         }
 
         ///////////////////////////////////
         // Identity verification
-        auto id = identities.find(toUUID(username));
-        eosio_assert(id != identities.end(), "Identity does not exist");
-        id->authenticate();
+        auto identity = findIdentity(username);
+        eosio_assert(identity != identities.end(), "Identity does not exist");
+        identity->authenticate();
 
         ///////////////////////////////////
         // Calculate total RIDL used
         asset ridlUsed = asset(0'0000, S_RIDL);
         for(auto& frag : fragments) ridlUsed += (frag.up + frag.down);
-        eosio_assert(id->tokens.amount >= ridlUsed.amount, "Not enough RIDL for repute.");
+        eosio_assert(identity->tokens.amount >= ridlUsed.amount, "Not enough RIDL for repute.");
 
         // If a base is provided, then
-        if(base > 0){
+        if(parent > 0){
             // Base existence validation
-            auto baseIndex = reputables.get_index<"id"_n>();
-            auto baseReputable = baseIndex.find(base);
-            eosio_assert(baseReputable != baseIndex.end(), "There is no such base reputable.");
+            auto baseReputable = reputables.find(parent);
+            eosio_assert(baseReputable != reputables.end(), "There is no such base reputable.");
 
             ///////////////////////////////////
             // Action reputing validation
@@ -81,13 +89,12 @@ public:
 
         ///////////////////////////////////
         // Add or update reputable
-        auto existing = reputables.find(reputable.fingerprint);
-        if(existing == reputables.end()) createNewEntity(reputable, id, fragments);
-        else updateExistingEntity(reputable, existing, id, fragments);
+        if(isNew) createNewEntity(reputable, identity, fragments);
+        else updateExistingEntity(reputable, existingReputable, identity, fragments);
 
         ///////////////////////////////////
         // Identity reputing validation
-        if(reputable.type == "id") reputedIdentity(reputable.fingerprint, fragments);
+        if(reputable.type == "id") reputedIdentity(reputable.id, fragments);
 
         ///////////////////////////////////
         // Calculating Tax and adding globals
@@ -95,7 +102,7 @@ public:
         for(auto& frag : fragments) {
             updateFragmentTotals(frag);
 
-            if(existing->miner != id->account){
+            if(existingReputable->miner != identity->account){
                 asset tax(((float)(frag.isPositive() ? frag.up : frag.down).amount) * 0.1, S_RIDL);
                 if(reputable.hasMinerFragment(frag)) minerTax += tax;
                 else minerTax -= tax;
@@ -104,14 +111,14 @@ public:
 
         ///////////////////////////////////
         // Getting the old reputation or creating a zeroed out reputation.
-        Reputation reputation = Reputations(_self, reputable.fingerprint)
-            .get_or_default(reputation::createReputation(reputable.fingerprint));
+        Reputation reputation = Reputations(_self, reputable.id)
+            .get_or_default(reputation::createReputation(reputable.id));
 
         ///////////////////////////////////
         // Setting the new reputation
         reputation.mergeRepute(fragments);
         reputation.total_reputes += 1;
-        Reputations(_self, reputable.fingerprint).set(reputation, reputable.miner);
+        Reputations(_self, reputable.id).set(reputation, reputable.miner);
 
 
 
@@ -128,15 +135,15 @@ public:
 
         ///////////////////////////////////
         // Last reputer mined
-        if(existing->last_reputer && existing->last_reputer != id->account && is_account(existing->last_reputer)){
-            sendRIDL(_self, existing->last_reputer, fivePercent, memo);
+        if(existingReputable->last_reputer && existingReputable->last_reputer != identity->account && is_account(existingReputable->last_reputer)){
+            sendRIDL(_self, existingReputable->last_reputer, fivePercent, memo);
             remainingRIDL -= fivePercent;
         }
 
         ///////////////////////////////////
         // Mine owner mined
-        if(existing->miner && minerTax.amount > 0){
-            sendRIDL(_self, existing->miner, minerTax, memo);
+        if(existingReputable->miner && minerTax.amount > 0){
+            sendRIDL(_self, existingReputable->miner, minerTax, memo);
             remainingRIDL -= minerTax;
         }
 
@@ -150,15 +157,15 @@ public:
 
         ///////////////////////////////////
         // Reducing the Identity's RIDL
-        identities.modify(id, same_payer, [&](auto& row){ row.tokens -= ridlUsed; });
+        identities.modify(identity, same_payer, [&](auto& row){ row.tokens -= ridlUsed; });
     }
 
 
 
-    void forcetype(string& type, uuid& base, string& upTag, string& downTag){
+    void forcetype(string& type, uuid& parent, string& upTag, string& downTag){
         require_auth(_self);
 
-        RepType repType = RepType::create(type, upTag, downTag, base);
+        RepType repType = RepType::create(type, upTag, downTag, parent);
 
         ReputationTypes reputationTypes(_self, _self.value);
         auto iter = reputationTypes.find(repType.fingerprint);
@@ -171,32 +178,32 @@ private:
 
 
 
-    void createNewEntity(RepEntity& reputable, Identities::const_iterator& id, vector<ReputationFragment>& fragments){
-        reputable.miner = id->account;
+    void createNewEntity(Reputable& reputable, Identities::const_iterator& identity, vector<ReputationFragment>& fragments){
+        reputable.miner = identity->account;
         reputable.miner_frags = fragments;
         reputable.last_repute_time = now();
         reputable.id = reputables.available_primary_key();
         if(reputable.id == 0) reputable.id = 1;
-        reputables.emplace(id->account, [&](auto& row){ row = reputable; });
+        reputables.emplace(identity->account, [&](auto& row){ row = reputable; });
     }
 
-    void updateExistingEntity(RepEntity& reputable, Reputables::const_iterator& existing, Identities::const_iterator& id, vector<ReputationFragment>& fragments){
-        reputable.merge(*existing);
+    void updateExistingEntity(Reputable& reputable, Reputables::const_iterator& existingReputable, Identities::const_iterator& identity, vector<ReputationFragment>& fragments){
+        reputable.merge(*existingReputable);
 
         // Setting new miner
-        if(!existing->miner || existing->miner_til < now()){
-            reputable.miner = id->account;
+        if(!existingReputable->miner || existingReputable->miner_til < now()){
+            reputable.miner = identity->account;
             reputable.miner_til = now() + (SECONDS_PER_DAY * 30);
             reputable.miner_frags = fragments;
             reputable.last_reputer = name("");
         } else {
-            reputable.last_reputer = (reputable.last_reputer != id->account)
-                                     ? id->account
+            reputable.last_reputer = (reputable.last_reputer != identity->account)
+                                     ? identity->account
                                      : name("");
         }
 
         reputable.last_repute_time = now();
-        reputables.modify(existing, same_payer, [&](auto& row){ row = reputable; });
+        reputables.modify(existingReputable, same_payer, [&](auto& row){ row = reputable; });
     }
 
     void reputedIdentity(uuid& entityFingerprint, vector<ReputationFragment>& fragments){

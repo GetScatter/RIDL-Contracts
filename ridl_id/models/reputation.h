@@ -64,7 +64,9 @@ namespace reputation {
             lower(downTag);
 
             RepType t;
-            t.fingerprint = toUUID(base == 0 ? type : std::to_string(base)+type);
+            // TODO: Fix
+//            t.fingerprint = toUUID(base == NO_HASH ? type : std::to_string(base.data())+type);
+            t.fingerprint = toUUID(type);
             t.type = type;
             t.base = base;
             t.upTag = upTag.size() == 0 ? "good" : upTag;
@@ -84,7 +86,7 @@ namespace reputation {
     };
 
     struct [[eosio::table, eosio::contract("ridlridlridl")]] Reputation {
-        uuid                            fingerprint;
+        uuid                            id;
         vector<ReputationFragment>      fragments;
         int64_t                         total_reputes;
 
@@ -123,9 +125,9 @@ namespace reputation {
 
 
 
-    static Reputation createReputation(uuid fingerprint){
+    static Reputation createReputation(uuid id){
         Reputation r;
-        r.fingerprint = fingerprint;
+        r.id = id;
         r.total_reputes = 0;
         return r;
     }
@@ -142,11 +144,11 @@ namespace reputation {
 
 
     typedef eosio::multi_index<"votetypes"_n,    VotableRepType,
-            indexed_by<"base"_n,    const_mem_fun<VotableRepType, uint64_t, &VotableRepType::by_base>>>
+            indexed_by<"base"_n,    const_mem_fun<VotableRepType, uuid, &VotableRepType::by_base>>>
                                                                              VotableRepTypes;
 
     typedef eosio::multi_index<"reptypes"_n,       RepType,
-            indexed_by<"base"_n,    const_mem_fun<RepType, uint64_t, &RepType::by_base>>>
+            indexed_by<"base"_n,    const_mem_fun<RepType, uuid, &RepType::by_base>>>
                                                                              ReputationTypes;
 
 

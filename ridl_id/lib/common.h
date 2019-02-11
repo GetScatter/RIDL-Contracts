@@ -20,6 +20,7 @@ namespace common {
     static const uint64_t       SECONDS_PER_DAY(86400);
     static const uint64_t       TOPUP_DELAY(10);
     static const checksum256    RIDL_HASH = sha256("ridl", 4);
+    static const checksum256    NO_HASH = sha256("", 0);
 
     static void prove( const signature& sig, const public_key& key ) {
         assert_recover_key(RIDL_HASH, sig, key);
@@ -28,11 +29,6 @@ namespace common {
     inline static uuid toUUID(string username){
         return std::hash<string>{}(username);
     }
-
-//    inline static cuuid toCUUID(string username){
-//        return sha256(username.c_str(), username.size());
-//        return std::hash<string>{}(username);
-//    }
 
     void lower( string& anycase ){
         std::transform(anycase.begin(), anycase.end(), anycase.begin(), ::tolower);
@@ -74,4 +70,5 @@ namespace common {
                 make_tuple(from, to, quantity, memo)
         ).send();
     }
+
 };

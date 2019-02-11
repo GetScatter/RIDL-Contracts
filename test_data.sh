@@ -3,6 +3,9 @@
 # TEST KEY, NEVER USE ON MAINNETS
 # 5KNNCwxjTeCvhz5tZdcphA1RCEvSduCDkmQSVKkZTQunSD9Jfxw
 USER_KEY=EOS8YQzaYLxT17fWAPueQBxRjHehTQYZEvgPAWPPH4mAuwTJi3mPN
+ID=HelloWorld
+FRAG='[{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}]'
+CHAIN="eos::cf057bbfb72640471fd910bcb67639c22df9f92470936cddc1ade0e2f2e7dc4f"
 
 #cleos push action ridlridlridl clean '["eosio"]' -p ridlridlridl
 #ridl_id/scripts/set_types.sh
@@ -15,13 +18,12 @@ USER_KEY=EOS8YQzaYLxT17fWAPueQBxRjHehTQYZEvgPAWPPH4mAuwTJi3mPN
 #cleos push action ridlridlridl identify '["test2account", "HelloWorld2", "'$USER_KEY'"]' -p test2account
 
 # REPUTES
-#cleos push action ridlridlridl repute '["HelloWorld", "app::fortnite", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], "", 0, ""]' -p test1account
-#cleos push action ridlridlridl repute '["HelloWorld", "app::domain.com", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], "", 0, ""]' -p test1account
-#cleos push action ridlridlridl repute '["HelloWorld", "app::get-scatter.com", [{"type":"social", "fingerprint":3425667939, "up":"2.0000 RIDL", "down":"0.0000 RIDL"}], "", 0, ""]' -p test1account
-#cleos push action ridlridlridl repute '["HelloWorld", "acc::scatterfunds", [{"type":"social", "fingerprint":3425667939, "up":"0.0000 RIDL", "down":"1.0000 RIDL"}], "eos::cf057bbfb72640471fd910bcb67639c22df9f92470936cddc1ade0e2f2e7dc4f", 0, ""]' -p test1account
-#cleos push action ridlridlridl repute '["HelloWorld", "acc::eosio.token", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], "eos::cf057bbfb72640471fd910bcb67639c22df9f92470936cddc1ade0e2f2e7dc4f", 0, ""]' -p test1account
-cleos push action ridlridlridl repute '["HelloWorld", "acc::eosio.system", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], "eos::cf057bbfb72640471fd910bcb67639c22df9f92470936cddc1ade0e2f2e7dc4f", 0, ""]' -p test1account
-cleos push action ridlridlridl repute '["HelloWorld", "act::updateauth", [{"type":"dangerous", "fingerprint":118999305, "up":"0.0000 RIDL", "down":"1.0000 RIDL"}], "", 1, ""]' -p test1account
+
+##################################################################
+#                                           username, id, entity, type, fragments, network, parent, details
+##################################################################
+#cleos push action ridlridlridl repute '["'$ID'", 0, "eosio.system", "acc", '"$FRAG"', "'$CHAIN'", 0, ""]' -p test1account
+cleos push action ridlridlridl repute '["'$ID'", 0, "updateauth", "act", [{"type":"dangerous", "fingerprint":118999305, "up":"0.0000 RIDL", "down":"1.0000 RIDL"}], "", 0, ""]' -p test1account
 
 
 #cleos push action ridlridlridl repute '["HelloWorld", "acc::eosio.token", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], "eos::aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906", 0, ""]' -p test1account

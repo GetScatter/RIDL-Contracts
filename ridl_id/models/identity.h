@@ -11,6 +11,7 @@ using std::string;
 namespace identity {
 
     struct [[eosio::table, eosio::contract("ridlridlridl")]] Identity {
+        uuid                    id;
         uuid                    fingerprint;
         string                  username;
         public_key              key;
@@ -19,7 +20,8 @@ namespace identity {
         asset                   tokens;
         asset                   total_rep;
 
-        uuid primary_key() const { return fingerprint; }
+        uuid primary_key() const { return id; }
+        uint64_t by_name() const {return fingerprint; }
         uint64_t by_account() const {return account.value; }
 
 
@@ -62,7 +64,8 @@ namespace identity {
 
 
     typedef eosio::multi_index<"ids"_n, Identity,
-        indexed_by<"account"_n, const_mem_fun<Identity, uint64_t, &Identity::by_account>>
+        indexed_by<"account"_n, const_mem_fun<Identity, uint64_t, &Identity::by_account>>,
+        indexed_by<"name"_n, const_mem_fun<Identity, uint64_t, &Identity::by_name>>
         > Identities;
 
 

@@ -18,6 +18,15 @@ private:
     name _self;
     Identities identities;
     Topups topups;
+
+    auto findIdentity(string& username){
+        lower(username);
+        auto index = identities.get_index<"name"_n>();
+        auto found = index.find(toUUID(username));
+        eosio_assert(found != index.end(), ("Could not find username: "+username).c_str());
+        return identities.find(found->id);
+    }
+
 public:
     IdentityActions(name self):_self(self),
         identities(_self, _self.value),
@@ -49,8 +58,7 @@ public:
 
 
     void changekey(string& username, const public_key& key){
-        uuid fingerprint = toUUID(username);
-        auto identity = identities.find(fingerprint);
+        auto identity = findIdentity(username);
         eosio_assert(identity != identities.end(), "Identity does not exist");
         identity->authenticate();
 
@@ -61,8 +69,7 @@ public:
 
 
     void changeacc(string& username, name& account){
-        uuid fingerprint = toUUID(username);
-        auto identity = identities.find(fingerprint);
+        auto identity = findIdentity(username);
         eosio_assert(identity != identities.end(), "Identity does not exist");
         identity->authenticate();
 
@@ -84,10 +91,7 @@ public:
     void claim(const name& account, string& username, const public_key& key, const signature& sig){
         require_auth(account);
 
-        lower(username);
-        uuid fingerprint = toUUID(username);
-
-        auto identity = identities.find(fingerprint);
+        auto identity = findIdentity(username);
         eosio_assert(identity != identities.end(), "Identity not seeded.");
         eosio_assert(identity->account == _self, "Identity already owned.");
 
@@ -103,15 +107,12 @@ public:
     void loadtokens(string& username, const asset& tokens){
         eosio_assert(tokens.symbol == S_RIDL, "Can only load RIDL tokens into an identity.");
 
-        lower(username);
-        uuid fingerprint = toUUID(username);
-
-        auto identity = identities.find(fingerprint);
+        auto identity = findIdentity(username);
         eosio_assert(identity != identities.end(), "Cannot transfer RIDL tokens to an Identity that does not exist");
         identity->authenticate();
 
         // TODO: ADD IF EXISTING
-        auto existing = topups.find(fingerprint);
+        auto existing = topups.find(identity->fingerprint);
 
         asset maxCanHold = asset(100'0000 + (identity->total_rep.amount > 0 ? identity->total_rep.amount : 0), S_RIDL);
         asset total = tokens + identity->tokens;
@@ -130,7 +131,7 @@ public:
 
         if(existing == topups.end()){
             topups.emplace(_self, [&](auto& row){
-                row.fingerprint = fingerprint;
+                row.fingerprint = identity->fingerprint;
                 row.tokens = remaining;
                 row.claimable = now() + TOPUP_DELAY;
             });
@@ -144,21 +145,19 @@ public:
         // Temporary fix to cancel deferred transactions because cancelling them from the .send()
         // method throws an exception temporarily due to a patched but unapplied RAM exploit
         // https://github.com/EOSIO/eos/issues/6541
-        cancel_deferred(fingerprint);
+        cancel_deferred(identity->fingerprint);
 
         transaction t;
         t.actions.emplace_back(action( permission_level{ _self, "active"_n }, _self, name("tokensloaded"), make_tuple(username)));
         t.delay_sec = TOPUP_DELAY;
-        t.send(fingerprint, _self, true);
+        t.send(identity->fingerprint, _self, true);
     }
 
     void tokensloaded(string& username){
-        lower(username);
-        uuid fingerprint = toUUID(username);
-        auto identity = identities.find(fingerprint);
+        auto identity = findIdentity(username);
         eosio_assert(identity != identities.end(), "An Identity with that name does not exist.");
 
-        auto topup = topups.find(fingerprint);
+        auto topup = topups.find(identity->fingerprint);
         eosio_assert(topup != topups.end(), "There is no pending topup for this Identity.");
         eosio_assert(topup->claimable >= now(), "This Identity's topup is not yet available for use.");
 
@@ -177,6 +176,7 @@ private:
 
         auto insertNewIdentity = [&](){
             identities.emplace(_self, [&](auto& record){
+                identity.id = identities.available_primary_key();
                 record = identity;
                 record.tokens = asset(tokens, S_RIDL);
 

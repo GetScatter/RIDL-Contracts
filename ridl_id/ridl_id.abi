@@ -81,7 +81,7 @@
             ]
         },
         {
-            "name": "RepEntity",
+            "name": "Reputable",
             "base": "",
             "fields": [
                 {
@@ -494,7 +494,7 @@
         },
         {
             "name": "reputables",
-            "type": "RepEntity",
+            "type": "Reputable",
             "index_type": "i64",
             "key_names": [],
             "key_types": []
