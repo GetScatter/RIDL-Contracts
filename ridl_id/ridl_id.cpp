@@ -10,6 +10,7 @@
 #include "actions/balance_actions.hpp"
 #include "actions/identity_actions.hpp"
 #include "actions/reputation_actions.hpp"
+#include "actions/bond_actions.hpp"
 
 
 using namespace eosio;
@@ -137,6 +138,17 @@ public:
     }
 
 
+
+
+    /**********************************************/
+    /***                                        ***/
+    /***                  Bonds                 ***/
+    /***                                        ***/
+    /**********************************************/
+
+    ACTION createbond(string& username, string& title, string& details, uint64_t duration, asset& limit){
+        BondActions(_self).create(username, title, details, duration, limit);
+    }
 
 
 
