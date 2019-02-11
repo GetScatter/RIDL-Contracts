@@ -100,7 +100,7 @@ public:
         });
     }
 
-    void topup(string& username, const asset& tokens){
+    void loadtokens(string& username, const asset& tokens){
         eosio_assert(tokens.symbol == S_RIDL, "Can only load RIDL tokens into an identity.");
 
         lower(username);
@@ -141,13 +141,18 @@ public:
             });
         }
 
+        // Temporary fix to cancel deferred transactions because cancelling them from the .send()
+        // method throws an exception temporarily due to a patched but unapplied RAM exploit
+        // https://github.com/EOSIO/eos/issues/6541
+        cancel_deferred(fingerprint);
+
         transaction t;
-        t.actions.emplace_back(action( permission_level{ _self, "active"_n }, _self, name("applytopup"), make_tuple(username)));
+        t.actions.emplace_back(action( permission_level{ _self, "active"_n }, _self, name("tokensloaded"), make_tuple(username)));
         t.delay_sec = TOPUP_DELAY;
         t.send(fingerprint, _self, true);
     }
 
-    void applytopup(string& username){
+    void tokensloaded(string& username){
         lower(username);
         uuid fingerprint = toUUID(username);
         auto identity = identities.find(fingerprint);
@@ -160,6 +165,7 @@ public:
         identities.modify(identity, _self, [&](auto& record){
             record.tokens += topup->tokens;
         });
+
         topups.erase(topup);
     }
 
@@ -174,6 +180,7 @@ private:
                 record = identity;
                 record.tokens = asset(tokens, S_RIDL);
 
+                // TODO: REMOVE OLD IDENTITY REPUTATION IF EXISTS
                 // TODO: Need to move tokens from reserves to this contract.
             });
         };
@@ -193,14 +200,12 @@ private:
                     record.expires = existingIdentity->expires + (SECONDS_PER_DAY * 365);
                 });
             } else {
-                // TODO: REMOVE OLD IDENTITY REPUTATION
                 identities.erase(existingIdentity);
                 insertNewIdentity();
             }
 
 
         }
-
 
         // Registering new identity
         else insertNewIdentity();

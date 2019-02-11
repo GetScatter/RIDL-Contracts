@@ -29,6 +29,11 @@ namespace common {
         return std::hash<string>{}(username);
     }
 
+//    inline static cuuid toCUUID(string username){
+//        return sha256(username.c_str(), username.size());
+//        return std::hash<string>{}(username);
+//    }
+
     void lower( string& anycase ){
         std::transform(anycase.begin(), anycase.end(), anycase.begin(), ::tolower);
     }

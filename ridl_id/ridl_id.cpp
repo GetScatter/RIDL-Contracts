@@ -123,8 +123,8 @@ public:
      * @param tokens
      * @return
      */
-    ACTION topup(string& username, const asset& tokens){
-        IdentityActions(_self).topup(username, tokens);
+    ACTION loadtokens(string& username, const asset& tokens){
+        IdentityActions(_self).loadtokens(username, tokens);
     }
 
     /***
@@ -132,8 +132,8 @@ public:
      * @param username
      * @return
      */
-    ACTION applytopup(string& username){
-        IdentityActions(_self).claimtopup(username);
+    ACTION tokensloaded(string& username){
+        IdentityActions(_self).tokensloaded(username);
     }
 
 
@@ -154,8 +154,8 @@ public:
      * @param details (optional)
      * @return
      */
-    ACTION repute(string& username, string& entity, std::vector<ReputationFragment>& fragments, const string& details){
-        ReputationActions(_self).repute(username, entity, fragments);
+    ACTION repute(string& username, string& entity, std::vector<ReputationFragment>& fragments, string& network_id, uuid& base, const string& details){
+        ReputationActions(_self).repute(username, entity, fragments, network_id, base);
     }
 
     /***
@@ -180,7 +180,7 @@ public:
      * @param downTag (optional)
      * @return
      */
-    ACTION forcetype(string& type, string& base, string& upTag, string& downTag){
+    ACTION forcetype(string& type, uuid& base, string& upTag, string& downTag){
         ReputationActions(_self).forcetype(type,base,upTag,downTag);
     }
 
@@ -206,7 +206,7 @@ void apply(uint64_t receiver, uint64_t code, uint64_t action) {
     auto self = receiver;
 
     if( code == self ) switch(action) {
-        EOSIO_DISPATCH_HELPER( ridlridlridl, (clean)(identify)(changekey)(changeacc)(seed)(claim)(topup)(applytopup)(repute)(forcetype) )
+        EOSIO_DISPATCH_HELPER( ridlridlridl, (clean)(identify)(changekey)(changeacc)(seed)(claim)(loadtokens)(tokensloaded)(repute)(forcetype) )
     }
 
     else {

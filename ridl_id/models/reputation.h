@@ -47,17 +47,8 @@ namespace reputation {
 
 
 
-    struct [[eosio::table, eosio::contract("ridlridlridl")]] NewRepType {
-        uuid            fingerprint;
-        uuid            base;
-        string          type;
-        vector<name>    up;
-        vector<name>    down;
 
-        uuid primary_key() const { return fingerprint; }
-    };
-
-    struct [[eosio::table, eosio::contract("ridlridlridl")]] RepTypes {
+    struct [[eosio::table, eosio::contract("ridlridlridl")]] RepType {
         uuid                fingerprint;
         string              type;
         uuid                base;
@@ -66,6 +57,30 @@ namespace reputation {
 
         uuid primary_key() const { return fingerprint; }
         uuid by_base() const { return base; }
+
+        static RepType create(string& type, string& upTag, string& downTag, uuid& base){
+            lower(type);
+            lower(upTag);
+            lower(downTag);
+
+            RepType t;
+            t.fingerprint = toUUID(base == 0 ? type : std::to_string(base)+type);
+            t.type = type;
+            t.base = base;
+            t.upTag = upTag.size() == 0 ? "good" : upTag;
+            t.downTag = downTag.size() == 0 ? "bad" : downTag;
+
+            return t;
+        }
+    };
+
+    struct [[eosio::table, eosio::contract("ridlridlridl")]] VotableRepType {
+        RepType         repType;
+        vector<uuid>    up;
+        vector<uuid>    down;
+
+        uuid primary_key() const { return repType.fingerprint; }
+        uuid by_base() const { return repType.base; }
     };
 
     struct [[eosio::table, eosio::contract("ridlridlridl")]] Reputation {
@@ -126,9 +141,12 @@ namespace reputation {
     }
 
 
-    typedef eosio::multi_index<"newreptypes"_n,    NewRepType>               NewRepTypes;
-    typedef eosio::multi_index<"reptypes"_n,       RepTypes,
-            indexed_by<"base"_n,    const_mem_fun<RepTypes, uint64_t, &RepTypes::by_base>>>
+    typedef eosio::multi_index<"votetypes"_n,    VotableRepType,
+            indexed_by<"base"_n,    const_mem_fun<VotableRepType, uint64_t, &VotableRepType::by_base>>>
+                                                                             VotableRepTypes;
+
+    typedef eosio::multi_index<"reptypes"_n,       RepType,
+            indexed_by<"base"_n,    const_mem_fun<RepType, uint64_t, &RepType::by_base>>>
                                                                              ReputationTypes;
 
 

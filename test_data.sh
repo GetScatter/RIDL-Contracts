@@ -13,10 +13,22 @@ USER_KEY=EOS8YQzaYLxT17fWAPueQBxRjHehTQYZEvgPAWPPH4mAuwTJi3mPN
 #cleos transfer test1account ridlridlridl "1.0000 SYS" "" -p test1account
 #cleos push action ridlridlridl identify '["test1account", "HelloWorld", "'$USER_KEY'"]' -p test1account
 #cleos push action ridlridlridl identify '["test2account", "HelloWorld2", "'$USER_KEY'"]' -p test2account
-#cleos push action ridlridlridl repute '["HelloWorld", "app::fortnite", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], ""]' -p test1account
-#
-#cleos push action ridlridlridl forcetype '["leadership", "app::fortnite", "Born Leader", "Sheep"]' -p ridlridlridl
+
+# REPUTES
+#cleos push action ridlridlridl repute '["HelloWorld", "app::fortnite", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], "", 0, ""]' -p test1account
+#cleos push action ridlridlridl repute '["HelloWorld", "app::domain.com", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], "", 0, ""]' -p test1account
+#cleos push action ridlridlridl repute '["HelloWorld", "app::get-scatter.com", [{"type":"social", "fingerprint":3425667939, "up":"2.0000 RIDL", "down":"0.0000 RIDL"}], "", 0, ""]' -p test1account
+#cleos push action ridlridlridl repute '["HelloWorld", "acc::scatterfunds", [{"type":"social", "fingerprint":3425667939, "up":"0.0000 RIDL", "down":"1.0000 RIDL"}], "eos::cf057bbfb72640471fd910bcb67639c22df9f92470936cddc1ade0e2f2e7dc4f", 0, ""]' -p test1account
+#cleos push action ridlridlridl repute '["HelloWorld", "acc::eosio.token", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], "eos::cf057bbfb72640471fd910bcb67639c22df9f92470936cddc1ade0e2f2e7dc4f", 0, ""]' -p test1account
+cleos push action ridlridlridl repute '["HelloWorld", "acc::eosio.system", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], "eos::cf057bbfb72640471fd910bcb67639c22df9f92470936cddc1ade0e2f2e7dc4f", 0, ""]' -p test1account
+cleos push action ridlridlridl repute '["HelloWorld", "act::updateauth", [{"type":"dangerous", "fingerprint":118999305, "up":"0.0000 RIDL", "down":"1.0000 RIDL"}], "", 1, ""]' -p test1account
+
+
+#cleos push action ridlridlridl repute '["HelloWorld", "acc::eosio.token", [{"type":"social", "fingerprint":3425667939, "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], "eos::aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906", 0, ""]' -p test1account
+
+
+#cleos push action ridlridlridl forcetyp`e '["leadership", "app::fortnite", "Born Leader", "Sheep"]' -p ridlridlridl
 #cleos push action ridlridlridl repute '["HelloWorld", "app::fortnite", [{"type":"leadership", "up":"1.0000 RIDL", "down":"0.0000 RIDL"}], ""]' -p test1account
 
-cleos push action ridlridlcoin transfer '["test2account", "ridlridlridl", "50.0000 RIDL", ""]' -p test2account
-cleos push action ridlridlridl topup '["HelloWorld2", "50.0000 RIDL"]' -p test2account
+#cleos push action ridlridlcoin transfer '["test2account", "ridlridlridl", "50.0000 RIDL", ""]' -p test2account
+#cleos push action ridlridlridl loadtokens '["HelloWorld3", "10.0000 RIDL"]' -p test2account

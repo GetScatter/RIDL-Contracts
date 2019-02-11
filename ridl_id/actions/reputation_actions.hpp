@@ -28,7 +28,7 @@ public:
         identities(_self, _self.value){}
 
 
-    void repute(string& username, string& entity, vector<ReputationFragment>& fragments){
+    void repute(string& username, string& entity, vector<ReputationFragment>& fragments, string& network_id, uuid& base){
         ///////////////////////////////////
         // Assertions and formatting
         eosio_assert(username.size() > 0, "Identity is invalid");
@@ -37,7 +37,11 @@ public:
 
         lower(username);
         lower(entity);
-        uuid entityFingerprint = toUUID(entity);
+        lower(network_id);
+
+        ///////////////////////////////////
+        // Get or create entity
+        RepEntity reputable = reputable::create(entity, network_id, base);
 
         ///////////////////////////////////
         // Fragment validation
@@ -45,7 +49,7 @@ public:
             frag.assertValid();
             auto existingFrag = reputationTypes.find(frag.fingerprint);
             eosio_assert(existingFrag != reputationTypes.end(), "Fragment type is not available");
-            eosio_assert(existingFrag->base == 0 || existingFrag->base == entityFingerprint, "Fragment does not belong to this entity");
+            eosio_assert(existingFrag->base == 0 || existingFrag->base == reputable.fingerprint, "Fragment does not belong to this entity");
             eosio_assert(existingFrag->type == frag.type, "Fingerprint does not match type name");
         }
 
@@ -61,19 +65,29 @@ public:
         for(auto& frag : fragments) ridlUsed += (frag.up + frag.down);
         eosio_assert(id->tokens.amount >= ridlUsed.amount, "Not enough RIDL for repute.");
 
-        ///////////////////////////////////
-        // Get or create entity
-        RepEntity reputable = reputable::create(entity);
-        auto existing = reputables.find(reputable.fingerprint);
+        // If a base is provided, then
+        if(base > 0){
+            // Base existence validation
+            auto baseIndex = reputables.get_index<"id"_n>();
+            auto baseReputable = baseIndex.find(base);
+            eosio_assert(baseReputable != baseIndex.end(), "There is no such base reputable.");
+
+            ///////////////////////////////////
+            // Action reputing validation
+            if(reputable.type == "act"){
+                eosio_assert(baseReputable->type == "acc", "The base reputable of an action must be a blockchain accounts/contract.");
+            }
+        }
 
         ///////////////////////////////////
         // Add or update reputable
+        auto existing = reputables.find(reputable.fingerprint);
         if(existing == reputables.end()) createNewEntity(reputable, id, fragments);
         else updateExistingEntity(reputable, existing, id, fragments);
 
         ///////////////////////////////////
         // Identity reputing validation
-        if(reputable.type == "id") reputedIdentity(entityFingerprint, fragments);
+        if(reputable.type == "id") reputedIdentity(reputable.fingerprint, fragments);
 
         ///////////////////////////////////
         // Calculating Tax and adding globals
@@ -141,22 +155,16 @@ public:
 
 
 
-    void forcetype(string& type, string& base, string& upTag, string& downTag){
+    void forcetype(string& type, uuid& base, string& upTag, string& downTag){
         require_auth(_self);
 
-        uuid fingerprint = toUUID(base == "" ? type : base+type);
-        uuid basePrint = base == "" ? 0 : toUUID(base);
+        RepType repType = RepType::create(type, upTag, downTag, base);
 
         ReputationTypes reputationTypes(_self, _self.value);
-        auto iter = reputationTypes.find(fingerprint);
-        if(iter != reputationTypes.end()) reputationTypes.erase(iter);
-        else reputationTypes.emplace(_self, [&](auto& r){
-            r.fingerprint = fingerprint;
-            r.type = type;
-            r.base = basePrint;
-            r.upTag = upTag.size() == 0 ? "Good" : upTag;
-            r.downTag = downTag.size() == 0 ? "Bad" : downTag;
-        });
+        auto iter = reputationTypes.find(repType.fingerprint);
+        eosio_assert(iter == reputationTypes.end(), "This rep type already exists.");
+
+        reputationTypes.emplace(_self, [&](auto& r){ r = repType; });
     }
 
 private:
@@ -166,6 +174,9 @@ private:
     void createNewEntity(RepEntity& reputable, Identities::const_iterator& id, vector<ReputationFragment>& fragments){
         reputable.miner = id->account;
         reputable.miner_frags = fragments;
+        reputable.last_repute_time = now();
+        reputable.id = reputables.available_primary_key();
+        if(reputable.id == 0) reputable.id = 1;
         reputables.emplace(id->account, [&](auto& row){ row = reputable; });
     }
 
@@ -184,6 +195,7 @@ private:
                                      : name("");
         }
 
+        reputable.last_repute_time = now();
         reputables.modify(existing, same_payer, [&](auto& row){ row = reputable; });
     }
 
