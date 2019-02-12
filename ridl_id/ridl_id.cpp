@@ -146,8 +146,50 @@ public:
     /***                                        ***/
     /**********************************************/
 
-    ACTION createbond(string& username, string& title, string& details, uint64_t duration, asset& limit){
-        BondActions(_self).create(username, title, details, duration, limit);
+    /***
+     * Creates a bond
+     * @param username
+     * @param title
+     * @param details
+     * @param duration
+     * @param starts_in_seconds
+     * @param limit
+     * @param fixed_party
+     * @return
+     */
+    ACTION createbond(string& username, string& title, string& details, uint64_t duration, uint64_t starts_in_seconds, asset& limit, uuid& fixed_party){
+        BondActions(_self).create(username, title, details, duration, starts_in_seconds, limit, fixed_party);
+    }
+
+    /***
+     * Votes on a bond
+     * @param username
+     * @param bond_id
+     * @param rep
+     * @return
+     */
+    ACTION votebond(string& username, uuid& bond_id, asset rep){
+        BondActions(_self).votebond(username, bond_id, rep);
+    }
+
+    /***
+     * Allows a fixed_party to cancel a bond for the bonder
+     * @param username
+     * @param bond_id
+     * @return
+     */
+    ACTION cancelbond(string& username, uuid& bond_id){
+        BondActions(_self).cancelbond(username, bond_id);
+    }
+
+    /***
+     * Closes a limit reached or expired bond
+     * !! CALLED FROM DEFERRED OR FALLBACK !!
+     * @param bond_id
+     * @return
+     */
+    ACTION closebond(uuid& bond_id){
+        BondActions(_self).closebond(bond_id);
     }
 
 

@@ -15,22 +15,26 @@ namespace bond {
         uuid                identity;
         string              title;
         string              details;
+        uint64_t            start_time;
         uint64_t            expires;
         asset               limit;
         asset               votes;
+        uuid                fixed_party;
 
         uuid primary_key() const { return id; }
         uint64_t by_identity() const {return identity; }
 
-        static Bond create(uuid identity, string& title, string& details, uint64_t duration, asset& limit){
+        static Bond create(uuid identity, string& title, string& details, uint64_t duration, uint64_t starts_in_seconds, asset& limit){
 
             Bond bond;
             bond.identity = identity;
             bond.title = title;
             bond.details = details;
+            bond.start_time = starts_in_seconds == 0 ? now() : now() + starts_in_seconds;
             bond.expires = now()+duration;
             bond.limit = limit;
             bond.votes = asset(0'0000, S_REP);
+            bond.fixed_party = 0;
 
             return bond;
         }

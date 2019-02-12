@@ -31,13 +31,14 @@ public:
         bonds(_self, _self.value),
         identities(_self, _self.value){}
 
-    void create(string& username, string& title, string& details, uint64_t duration, asset& limit){
+    void create(string& username, string& title, string& details, uint64_t duration, uint64_t starts_in_seconds, asset& limit, uuid& fixed_party){
         ///////////////////////////////////
         // Identity verification
         auto identity = findIdentity(username);
         eosio_assert(identity != identities.end(), "Identity does not exist");
         identity->authenticate();
 
+        eosio_assert(identity->created+(SECONDS_PER_DAY*30) <= now(), "Identities can only create bonds 30 days after registration.");
         eosio_assert(identity->total_rep.amount >= 500, "You need at least 500 available REP to create a bond.");
         eosio_assert(identity->total_rep.amount - identity->bonded.amount >= limit.amount,
                 ("You do not have enough unbonded REP to create this bond. Only "+
@@ -45,8 +46,9 @@ public:
                 " left.").c_str());
 
         bonds.emplace(identity->account, [&](auto& row){
-           row = Bond::create(identity->id, title, details, duration, limit);
+           row = Bond::create(identity->id, title, details, duration, starts_in_seconds, limit);
            row.id = bonds.available_primary_key();
+           if(fixed_party > 0) row.fixed_party = fixed_party;
         });
     }
 
@@ -59,8 +61,10 @@ public:
 
         auto bond = bonds.find(bond_id);
         eosio_assert(bond != bonds.end(), ("There is no bond with the ID: "+std::to_string(bond_id)).c_str());
+        eosio_assert(bond->start_time >= now(), "This bond has already expired.");
         eosio_assert(bond->expires >= now(), "This bond has already expired.");
         eosio_assert(bond->votes >= bond->limit, "This bond has already been closed out.");
+        eosio_assert(bond->fixed_party == 0 || bond->fixed_party == identity->id, "You are not allowed to vote on this bond.");
         asset repNeeded = asset(bond->limit.amount - bond->votes.amount, S_REP);
 
         // Not using more than needed to close out bond.
@@ -95,6 +99,43 @@ public:
             // Removing REP that is now lost forever.
             if (bond->votes.amount >= bond->limit.amount){
                 row.total_rep -= bond->limit;
+
+                if(bond->fixed_party > 0){
+                    auto party = identities.find(bond->fixed_party);
+                    if(party != identities.end()){
+                        identities.modify(party, same_payer, [&](auto& prow){
+                            prow.total_rep += bond->limit;
+                        });
+                    }
+
+                }
+            }
+        });
+
+        bonds.erase(bond);
+    }
+
+    void cancelbond(string& username, uuid& bond_id){
+        ///////////////////////////////////
+        // Identity verification
+        auto identity = findIdentity(username);
+        eosio_assert(identity != identities.end(), "Identity does not exist");
+        identity->authenticate();
+
+        auto bond = bonds.find(bond_id);
+        eosio_assert(bond != bonds.end(), ("There is no bond with the ID: "+std::to_string(bond_id)).c_str());
+        eosio_assert(bond->fixed_party == identity->id, "You are not the trustee of this bond.");
+
+        auto bonder = identities.find(bond->identity);
+        eosio_assert(bonder != identities.end(), "The bonded identity no longer exists");
+
+        identities.modify(bonder, same_payer, [&](auto& row){
+            row.bonded -= bond->limit;
+
+            if(bond->votes.amount > 0){
+                identities.modify(identity, same_payer, [&](auto& prow){
+                    prow.total_rep += bond->votes;
+                });
             }
         });
 
