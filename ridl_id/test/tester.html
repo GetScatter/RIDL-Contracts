@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RIDL ID Tester</title>
+
+    <script src='assets/eosjs-api.js'></script>
+    <script src='assets/eosjs-jsonrpc.js'></script>
+    <script src='assets/eosjs-jssig.js'></script>
+    <script src="https://cdn.jsdelivr.net/npm/eosjs-ecc@4.0.4/lib/eosjs-ecc.min.js"
+            integrity="sha512-dYFDmK/d9r3/NCp6toLtfkwOjSMRBaEzaGAx1tfRItC0nsI0hVLERk05iNBQR7uDNI7ludYhcBI4vUiFHdjsTQ=="
+            crossorigin="anonymous"></script>
+</head>
+<body>
+
+<button onclick="run()">Run tests</button>
+
+<script>
+    const eosioKey = "5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3";
+    const userKey = "5KNNCwxjTeCvhz5tZdcphA1RCEvSduCDkmQSVKkZTQunSD9Jfxw";
+    const rpc = new eosjs_jsonrpc.default('http://localhost:8888');
+    const signatureProvider = new eosjs_jssig.default([eosioKey, userKey]);
+    const api = new eosjs_api.default({ rpc, signatureProvider });
+
+    window.run = async () => {
+        console.log("Running tests");
+        const transact = (actions) => api.transact({ actions }, { blocksBehind: 3, expireSeconds: 30 });
+
+        // cleos push action ridlridlridl clean '[]' -p ridlridlridl
+        console.log('Running [clean]')
+        console.log(await transact([{
+            account: 'ridlridlridl',
+            name: 'clean',
+            authorization: [{
+                actor: 'ridlridlridl',
+                permission: 'active',
+            }],
+            data:{},
+        }]));
+
+        // cleos push action ridlridlridl setcreator '["eosio"]' -p ridlridlridl
+        console.log('Running [setcreator]')
+        console.log(await transact([{
+            account: 'ridlridlridl',
+            name: 'setcreator',
+            authorization: [{
+                actor: 'ridlridlridl',
+                permission: 'active',
+            }],
+            data:{ account:'eosio' },
+        }]));
+
+        // cleos push action ridlridlridl identify '["HelloWorld", "'$USER_KEY'"]' -p eosio
+        console.log('Running [identify]')
+        console.log(await transact([{
+            account: 'ridlridlridl',
+            name: 'identify',
+            authorization: [{
+                actor: 'eosio',
+                permission: 'active',
+            }],
+            data:{
+                username:'HelloWorld',
+                key:'EOS8YQzaYLxT17fWAPueQBxRjHehTQYZEvgPAWPPH4mAuwTJi3mPN'
+            },
+        }]));
+
+        // cleos push action ridlridlridl repute '[1, "eosio.system::updateauth", [{"type":"dangerous", "value":-1}, {"type":"security", "value":1}], "2.0000 RIDL", "Test memo"]' -p test1account
+        console.log('Running [repute]')
+        const info = await rpc.get_info();
+        const block_num = info.head_block_num-3;
+        const identity_id = 1;
+        const entity = 'eosio.system::updateauth';
+        const fragments = [{"type":"dangerous", "value":-1}, {"type":"security", "value":1}];
+        const tokens = '2.0000 RIDL';
+        // Example `1:201239:reputation-1security1:1.0000 RIDL`
+        const cleartext = `${identity_id}:${entity}:${block_num}:${fragments.map(x => `${x.type}${x.value}`).join('')}:${tokens}`;
+        const hash = eosjs_ecc.sha256(cleartext);
+        const sig = eosjs_ecc.signHash(hash, userKey);
+
+        console.log(await transact([{
+            account: 'ridlridlridl',
+            name: 'repute',
+            authorization: [{
+                actor: 'eosio', // Can be any account!
+                permission: 'active',
+            }],
+            data:{
+                identity_id,
+                entity,
+                fragments,
+                tokens,
+                block_num,
+                sig,
+                sender:'eosio',
+                details:"This is a test repute"
+            },
+        }]));
+
+        console.log("Done running tests");
+    };
+</script>
+
+
+</body>
+</html>

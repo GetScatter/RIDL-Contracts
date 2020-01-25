@@ -1,4 +1,4 @@
 #!/bin/bash
 
-cleos -u https://nodes.get-scatter.com set contract ridlridlcoin ../ridl_token -p ridlridlcoin
-cleos -u https://nodes.get-scatter.com set abi ridlridlcoin ridl_token.abi -p ridlridlcoin
+cleos -u https://nodes.get-scatter.com set contract ridlridltkns ../ridl_token -p ridlridltkns
+cleos -u https://nodes.get-scatter.com set abi ridlridltkns ridl_token.abi -p ridlridltkns

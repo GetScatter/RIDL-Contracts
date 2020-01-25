@@ -12,26 +12,20 @@ namespace identity {
 
     struct [[eosio::table, eosio::contract("ridlridlridl")]] Identity {
         uuid                    id;
-        uuid                    rep_id;
         uuid                    fingerprint;
         string                  username;
         public_key              key;
-        name                    account;
         uint64_t                expires;
         asset                   tokens;
         asset                   expansion;
-        asset                   total_rep;
-        asset                   usable_rep;
-        asset                   bonded;
         uint64_t                created;
         uint64_t                block;
 
         uuid primary_key() const { return id; }
-        uint64_t by_account() const {return account.value; }
         uint64_t by_name() const {return fingerprint; }
 
 
-        static Identity create(string& username, const public_key& key, const name& account){
+        static Identity create(string& username, const public_key& key){
             lower(username);
 
             validateName(username);
@@ -40,12 +34,8 @@ namespace identity {
             id.fingerprint = toUUID(username);
             id.username = username;
             id.key = key;
-            id.account = account;
             id.expires = now() + (SECONDS_PER_DAY * 365);
             id.expansion   = asset(0'0000, S_EXP);
-            id.total_rep   = asset(0'0000, S_REP);
-            id.usable_rep  = asset(0'0000, S_REP);
-            id.bonded      = asset(0'0000, S_REP);
             id.created = now();
 
             return id;
@@ -53,13 +43,15 @@ namespace identity {
 
         static void validateName(string& username){
             string error = "Identity names must be between 3 and 20 characters, and contain only Letters, Numbers, - _ and no spaces.";
-            eosio_assert(username.length() >= 3 && username.length() <= 20, error.c_str());
-            for ( char c : username ) eosio_assert(isalnum(c) || c == '-' || c == '_', error.c_str());
+            check(username.length() >= 3 && username.length() <= 20, error.c_str());
+            for ( char c : username ) check(isalnum(c) || c == '-' || c == '_', error.c_str());
         }
 
-        void authenticate() const {
-            require_auth(account);
-            eosio_assert(expires > now(), "Your Identity has expired.");
+        void authenticate(uint64_t& block_num, const signature& sig) const {
+            checkBlockNum(block_num);
+            string cleartext = (std::to_string(this->id) + std::to_string(block_num)).c_str();
+            checksum256 hash = sha256(cleartext.c_str(), cleartext.size());
+            assert_recover_key(hash, sig, this->key);
         }
     };
 
@@ -74,9 +66,8 @@ namespace identity {
 
 
     typedef eosio::multi_index<"ids"_n, Identity,
-        indexed_by<"account"_n, const_mem_fun<Identity, uint64_t, &Identity::by_account>>,
         indexed_by<"name"_n, const_mem_fun<Identity, uint64_t, &Identity::by_name>>
-        > Identities;
+    > Identities;
 
 
 

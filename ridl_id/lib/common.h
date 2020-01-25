@@ -1,9 +1,10 @@
 #pragma once
 
 
-#include <eosiolib/eosio.hpp>
-#include <eosiolib/asset.hpp>
-#include <eosiolib/transaction.hpp>
+#include <eosio/eosio.hpp>
+#include <eosio/asset.hpp>
+#include <eosio/transaction.hpp>
+#include <eosio/crypto.hpp>
 
 #include "types.h"
 using namespace types;
@@ -15,18 +16,31 @@ using std::vector;
 namespace common {
 
     // CONSTANTS
+    static const name           TOKEN_CONTRACT("ridlridltkns"_n);
+    static const name           RESERVES_ACCOUNT("ridlreserves"_n);
     static const symbol         S_RIDL("RIDL", 4);
-    static const symbol         S_REP("REP", 4);
-    static const symbol         S_EOS("EOS", 4);
     static const symbol         S_EXP("EXP", 4);
     static const checksum256    RIDL_HASH = sha256("ridl", 4);
-    static const checksum256    NO_HASH = sha256("", 0);
     static const uint64_t       SECONDS_PER_DAY(86400);
     static const uint64_t       TOPUP_DELAY(600); // TODO: configure to 1 day
-    static const uint64_t       MIN_REQUIRED_REP_FOR_BONDS(500);
+    static const uint8_t        BLOCK_RANGE(1);
 
-    static void prove( const signature& sig, const public_key& key ) {
-        assert_recover_key(RIDL_HASH, sig, key);
+    // Checks that a given block is within range.
+    void checkBlockNum(uint64_t& block_num){
+        bool aboveRange = (block_num < tapos_block_num() + BLOCK_RANGE);
+        bool belowRange = (block_num < tapos_block_num() - BLOCK_RANGE);
+        check(aboveRange || belowRange, "Referenced block num is not within the target range. ("+std::to_string(tapos_block_num())+")");
+    }
+
+    public_key stringToKey(string const & str){
+        public_key key;
+        key.type = 0; // K1
+        for(int i = 0; i < 33; ++i) key.data.at(i) = str.at(i);
+        return key;
+    }
+
+    std::string intToString( uint64_t value ) {
+        return std::to_string(value);
     }
 
     inline static uuid toUUID(string username){
@@ -47,29 +61,9 @@ namespace common {
         }
     }
 
-    vector<string> splitString(const string& str, const string& delim){
-        vector<string> parts;
-        if(str.size() == 0) return parts;
-        size_t prev = 0, pos = 0;
-        do
-        {
-            pos = str.find(delim, prev);
-            if (pos == string::npos) pos = str.length();
-            string token = str.substr(prev, pos-prev);
-            if (!token.empty()) parts.push_back(token);
-            prev = pos + delim.length();
-        }
-        while (pos < str.length() && prev < str.length());
-        return parts;
-    }
-
-    asset ridlToRep( asset& a ){
-        return asset(a.amount, S_REP);
-    }
-
     void sendRIDL(name& from, name to, asset quantity, string memo){
         action( permission_level{ "ridlridlridl"_n, "active"_n },
-                name("ridlridlcoin"),
+                TOKEN_CONTRACT,
                 name("transfer"),
                 make_tuple(from, to, quantity, memo)
         ).send();
@@ -89,6 +83,10 @@ namespace common {
         t.actions.emplace_back(action( permission_level{ _self, "active"_n }, _self, action_name, std::make_tuple(id)));
         t.delay_sec = delay_sec;
         t.send(unique_id, _self, true);
+    }
+
+    uint32_t now(){
+        return time_point_sec(current_time_point()).utc_seconds;
     }
 
 };
