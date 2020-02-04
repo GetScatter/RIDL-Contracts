@@ -60,6 +60,30 @@ public:
         IdentityActions(_self).seed(username, key);
     }
 
+    /***
+     * Revokes an identity
+     * @param identity_id
+     */
+    ACTION revoke(uuid& identity_id){
+        IdentityActions(_self).revoke(identity_id);
+    }
+
+    /***
+     * Activates an identity
+     * @param identity_id
+     */
+    ACTION activate(uuid& identity_id){
+        IdentityActions(_self).activate(identity_id);
+    }
+
+    /***
+     * Activates an identity
+     * @param identity_id
+     */
+    ACTION buyactions(uuid& identity_id){
+        IdentityActions(_self).buyactions(identity_id);
+    }
+
 
 
 
@@ -87,16 +111,6 @@ public:
      */
     ACTION changekey(uuid& identity_id, const string& key, uint64_t& block_num, const signature& sig){
         IdentityActions(_self).changekey(identity_id, key, block_num, sig);
-    }
-
-    /***
-     * Claims a reserved identity
-     * @param username
-     * @param key
-     * @param sig
-     */
-    ACTION claim(uuid& identity_id, const public_key& key, const signature& sig){
-        IdentityActions(_self).claim(identity_id, key, sig);
     }
 
     /***
@@ -148,7 +162,7 @@ void apply(uint64_t receiver, uint64_t code, uint64_t action) {
     auto self = receiver;
 
     if( code == self ) switch(action) {
-        EOSIO_DISPATCH_HELPER( ridlridlridl, (clean)(setcreator)(seed)(identify)(changekey)(claim)(tokensloaded)(repute) )
+        EOSIO_DISPATCH_HELPER( ridlridlridl, (clean)(setcreator)(seed)(revoke)(activate)(buyactions)(identify)(changekey)(tokensloaded)(repute) )
     }
 
     else {

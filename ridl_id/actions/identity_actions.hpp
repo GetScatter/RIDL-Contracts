@@ -3,6 +3,7 @@
 #include <eosio/eosio.hpp>
 #include "../models/identity.h"
 #include "../models/config.h"
+#include "../lib/publickey.h"
 #include "../../ridl_token/ridl_token.hpp"
 
 using namespace eosio;
@@ -37,11 +38,45 @@ public:
         createIdentity(identity);
     }
 
+    void buyactions(uuid& identity_id){
+        require_auth(Configs(_self, _self.value).get().identity_creator);
+        auto identity = identities.find(identity_id);
+        check(identity != identities.end(), "Identity does not exist");
+
+        asset maxCanHold = asset(100'0000 + (identity->expansion.amount > 0 ? identity->expansion.amount : 0), S_RIDL);
+
+        identities.modify(identity, same_payer, [&](auto& record){
+            record.tokens = maxCanHold;
+        });
+
+    }
+
+    void revoke(uuid& identity_id){
+        require_auth(Configs(_self, _self.value).get().identity_creator);
+        auto identity = identities.find(identity_id);
+        check(identity != identities.end(), "Identity does not exist");
+
+        check(!identity->activated, "This identity can no longer be revoked.");
+        identities.erase(identity);
+    }
+
+    void activate(uuid& identity_id){
+        require_auth(Configs(_self, _self.value).get().identity_creator);
+        auto identity = identities.find(identity_id);
+        check(identity != identities.end(), "Identity does not exist");
+
+        check(!identity->activated, "This identity is already activated.");
+        
+        identities.modify(identity, same_payer, [&](auto& record){
+            record.activated = 1;
+        });
+    }
+
 
     void changekey(uuid& identity_id, const string& key, uint64_t& block_num, const signature& sig){
         auto identity = identities.find(identity_id);
         check(identity != identities.end(), "Identity does not exist");
-        identity->authenticate(block_num, sig);
+        check(identity->activated, "Your identity is not yet activated, please wait.");
 
         checkBlockNum(block_num);
 
@@ -50,8 +85,8 @@ public:
         checksum256 hash = sha256(cleartext.c_str(), cleartext.size());
         assert_recover_key(hash, sig, identity->key);
 
-        identities.modify(identity, _self, [&](auto& record){
-            record.key = stringToKey(key);
+        identities.modify(identity, same_payer, [&](auto& record){
+            record.key = getPublicKey(key);
         });
     }
 
@@ -60,27 +95,13 @@ public:
         require_auth(_self);
 
         Identity identity = Identity::create(username, key);
-        identity.expires = now() + ((SECONDS_PER_DAY * 365) * 100);
 
-        createIdentity(identity, 100'0000);
-    }
-
-
-    void claim(uuid& identity_id, const public_key& key, const signature& sig){
-
-        auto identity = identities.find(identity_id);
-        check(identity != identities.end(), "Identity not seeded.");
-
-        // Proving ownership of public key
-        assert_recover_key(RIDL_HASH, sig, key);
-
-        identities.modify(identity, _self, [&](auto& record){
-            record.key = key;
-        });
+        createIdentity(identity, 100'0000, 1);
     }
 
     void loadtokens(const name& from, const asset& tokens, const string& memo){
         auto identity = findIdentity(memo);
+        check(identity->activated, "Your identity is not yet activated, please wait.");
         auto existing = topups.find(identity->fingerprint);
 
         check(tokens.symbol == S_RIDL, "Can only load RIDL tokens into an identity.");
@@ -117,13 +138,14 @@ public:
 
     void tokensloaded(uuid& identity_id){
         auto identity = identities.find(identity_id);
+        check(identity->activated, "Your identity is not yet activated, please wait.");
         check(identity != identities.end(), "An Identity with that name does not exist.");
 
         auto topup = topups.find(identity->fingerprint);
         check(topup != topups.end(), "There is no pending topup for this Identity.");
         check(topup->claimable >= now(), "This Identity's topup is not yet available for use.");
 
-        identities.modify(identity, _self, [&](auto& record){
+        identities.modify(identity, same_payer, [&](auto& record){
             record.tokens += topup->tokens;
         });
 
@@ -133,10 +155,10 @@ public:
 private:
 
 
-    void createIdentity(Identity& identity, int64_t tokens = 20'0000){
+    void createIdentity(Identity& identity, int64_t tokens = 20'0000, uint8_t preActivated = 0){
         auto index = identities.get_index<"name"_n>();
         auto found = index.find(toUUID(identity.username));
-        check(found == index.end(), "This identity is already seeded.");
+        check(found == index.end(), "This identity already exists.");
 
         identities.emplace(_self, [&](auto& record){
             identity.id = identities.available_primary_key();
@@ -144,6 +166,7 @@ private:
             record = identity;
             record.tokens = asset(tokens, S_RIDL);
             record.block = tapos_block_num();
+            record.activated = preActivated;
 
             // TODO: Need to move tokens from reserves to this contract.
         });

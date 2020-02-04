@@ -9,6 +9,7 @@ cleos push action ridlridlridl clean '["eosio"]' -p ridlridlridl
 cleos push action ridlridlridl setcreator '["eosio"]' -p ridlridlridl
 cleos push action ridlridlridl identify '["HelloWorld", "'$USER_KEY'"]' -p eosio
 cleos push action ridlridlridl identify '["HelloWorld2", "'$USER_KEY'"]' -p eosio
+# cleos push action ridlridlridl identify '["HelloWorld2", "EOS8YQzaYLxT17fWAPueQBxRjHehTQYZEvgPAWPPH4mAuwTJi3mPN"]' -p eosio
 
 # REPUTES
 

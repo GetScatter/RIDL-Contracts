@@ -21,22 +21,16 @@ namespace common {
     static const symbol         S_RIDL("RIDL", 4);
     static const symbol         S_EXP("EXP", 4);
     static const checksum256    RIDL_HASH = sha256("ridl", 4);
+    static const uint64_t       ONE_HOUR(3600);
     static const uint64_t       SECONDS_PER_DAY(86400);
     static const uint64_t       TOPUP_DELAY(600); // TODO: configure to 1 day
-    static const uint8_t        BLOCK_RANGE(1);
+    static const uint8_t        BLOCK_RANGE(25);
 
     // Checks that a given block is within range.
     void checkBlockNum(uint64_t& block_num){
         bool aboveRange = (block_num < tapos_block_num() + BLOCK_RANGE);
         bool belowRange = (block_num < tapos_block_num() - BLOCK_RANGE);
         check(aboveRange || belowRange, "Referenced block num is not within the target range. ("+std::to_string(tapos_block_num())+")");
-    }
-
-    public_key stringToKey(string const & str){
-        public_key key;
-        key.type = 0; // K1
-        for(int i = 0; i < 33; ++i) key.data.at(i) = str.at(i);
-        return key;
     }
 
     std::string intToString( uint64_t value ) {

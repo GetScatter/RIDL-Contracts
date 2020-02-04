@@ -34,6 +34,10 @@ public:
     void repute(uuid& identity_id, string& entity, vector<ReputationFragment>& fragments, asset& tokens, uint64_t& block_num, const signature& sig, name& sender){
         if(is_account(sender)) require_auth(sender);
 
+        // Token checks
+        check(tokens.is_valid(), "tokens parameter is not valid (Not within limits)" );
+        check(tokens.symbol == S_RIDL, "tokens precision mismatch (Should be 4 decimals)" );
+
         ///////////////////////////////////
         // Assertions and formatting
         check(entity.size() > 0, "Entity is invalid");
@@ -45,6 +49,7 @@ public:
         // Identity existence
         auto identity = identities.find(identity_id);
         check(identity != identities.end(), "Identity does not exist");
+        check(identity->activated, "Your identity is not yet activated, please wait.");
         // END /////////////////////////////////
 
         ///////////////////////////////////
@@ -64,7 +69,7 @@ public:
 
         // Fragment validation
         for(auto& frag : fragments) frag.assertValid();
-        check(tokens.amount / fragments.size() >= 1, "You must use at least 1.0000 RIDL per reputed fragment");
+        check(tokens / fragments.size() >= (asset(1'0000, S_RIDL)/5), "You must use at least 0.2000 RIDL per reputed fragment");
         check(identity->tokens.amount >= tokens.amount, "Not enough RIDL for repute.");
 
         asset toPrevious = asset(tokens.amount * 0.1, S_RIDL);
