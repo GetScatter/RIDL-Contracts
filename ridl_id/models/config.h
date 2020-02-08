@@ -3,8 +3,9 @@
 namespace config {
 
     struct [[eosio::table, eosio::contract("ridlridlridl")]] configs {
-        name    identity_creator;
+        name        manager;
+        uint64_t    starting_block;
     };
 
-    typedef eosio::singleton<"config"_n,      configs>               Configs;
+    typedef eosio::singleton<"configs"_n,      configs>               Configs;
 }

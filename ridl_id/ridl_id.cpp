@@ -33,22 +33,22 @@ public:
     /***                                        ***/
     /**********************************************/
 
-    /***
-     * ADMIN ONLY - Cleans all tables
-     */
-    ACTION clean(){
-        require_auth(_self);
-        cleanTable<Identities>(_self, _self.value);
-    }
-
 
     /***
      * ADMIN ONLY - Sets the identity creator auth account
-     * @param account
+     * @param manager
      */
-    ACTION setcreator(const name& account){
-        require_auth(_self);
-        Configs(_self, _self.value).set(configs({account}), _self);
+    ACTION init(const name& manager){
+        check(is_account(manager), "The specified manager is not an existing account.");
+
+        if(Configs(_self, 0).exists()){
+            configs conf(Configs(_self, 0).get());
+            require_auth(conf.manager);
+            Configs(_self, 0).set(configs({manager, .starting_block = conf.starting_block}), _self);
+        } else {
+            require_auth(_self);
+            Configs(_self, 0).set(configs({manager, .starting_block = static_cast<uint64_t>(tapos_block_num())}), _self);
+        }
     }
 
     /***
@@ -56,8 +56,8 @@ public:
      * @param username
      * @param key
      */
-    ACTION seed(string& username, const public_key& key){
-        IdentityActions(_self).seed(username, key);
+    ACTION seed(string& username, const public_key& key, asset& tokens, asset& expansion){
+        IdentityActions(_self).seed(username, key, tokens, expansion);
     }
 
     /***
@@ -80,8 +80,24 @@ public:
      * Activates an identity
      * @param identity_id
      */
-    ACTION buyactions(uuid& identity_id){
-        IdentityActions(_self).buyactions(identity_id);
+    ACTION buyactions(const uuid& identity_id, asset& quantity){
+        IdentityActions(_self).buyactions(identity_id, quantity);
+    }
+
+    /***
+     * Activates an identity
+     * @param identity_id
+     */
+    ACTION movedtokens(string& username, asset& quantity, string& old_chain, string& txid){
+        IdentityActions(_self).movedtokens(username, quantity);
+    }
+
+    /***
+     * Moves an identity from one chain to another
+     * @param identity_id
+     */
+    ACTION moveidentity(uuid& identity_id, string& new_chain_id){
+        IdentityActions(_self).moveidentity(identity_id, new_chain_id);
     }
 
 
@@ -137,6 +153,8 @@ public:
      * @param details (optional)
      */
     ACTION repute(uuid& identity_id, string& entity, vector<ReputationFragment>& fragments, asset& tokens, uint64_t& block_num, const signature& sig, name& sender, binary_extension<string> details){
+        // Checking if the sender has a pending topup.
+        IdentityActions(_self).tokensloaded(identity_id);
         ReputationActions(_self).repute(identity_id, entity, fragments, tokens, block_num, sig, sender);
     }
 
@@ -152,7 +170,7 @@ public:
 
     void transfer(const name& from, const name& to, const asset& quantity, const string& memo){
         if(to != _self) return;
-        IdentityActions(_self).loadtokens(from, quantity, memo);
+        IdentityActions(_self).loadTokensFromTransfer(from, quantity, memo);
     }
 
 };
@@ -162,7 +180,7 @@ void apply(uint64_t receiver, uint64_t code, uint64_t action) {
     auto self = receiver;
 
     if( code == self ) switch(action) {
-        EOSIO_DISPATCH_HELPER( ridlridlridl, (clean)(setcreator)(seed)(revoke)(activate)(buyactions)(identify)(changekey)(tokensloaded)(repute) )
+        EOSIO_DISPATCH_HELPER( ridlridlridl, (init)(seed)(revoke)(activate)(buyactions)(moveidentity)(identify)(changekey)(tokensloaded)(repute) )
     }
 
     else {

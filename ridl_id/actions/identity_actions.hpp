@@ -33,26 +33,27 @@ public:
 
 
     void identify(string& username, const public_key& key){
-        require_auth(Configs(_self, _self.value).get().identity_creator);
+        require_auth(Configs(_self, 0).get().manager);
         Identity identity = Identity::create(username, key);
         createIdentity(identity);
     }
 
-    void buyactions(uuid& identity_id){
-        require_auth(Configs(_self, _self.value).get().identity_creator);
+    void buyactions(const uuid& identity_id, asset& quantity){
+        require_auth(Configs(_self, 0).get().manager);
         auto identity = identities.find(identity_id);
         check(identity != identities.end(), "Identity does not exist");
+        loadtokens(*identity, quantity);
+    }
 
-        asset maxCanHold = asset(100'0000 + (identity->expansion.amount > 0 ? identity->expansion.amount : 0), S_RIDL);
-
-        identities.modify(identity, same_payer, [&](auto& record){
-            record.tokens = maxCanHold;
-        });
-
+    void movedtokens(string& username, asset& quantity){
+        require_auth(Configs(_self, 0).get().manager);
+        auto identity = findIdentity(username);
+        check(identity != identities.end(), "Identity does not exist");
+        loadtokens(*identity, quantity);
     }
 
     void revoke(uuid& identity_id){
-        require_auth(Configs(_self, _self.value).get().identity_creator);
+        require_auth(Configs(_self, 0).get().manager);
         auto identity = identities.find(identity_id);
         check(identity != identities.end(), "Identity does not exist");
 
@@ -61,7 +62,7 @@ public:
     }
 
     void activate(uuid& identity_id){
-        require_auth(Configs(_self, _self.value).get().identity_creator);
+        require_auth(Configs(_self, 0).get().manager);
         auto identity = identities.find(identity_id);
         check(identity != identities.end(), "Identity does not exist");
 
@@ -70,6 +71,23 @@ public:
         identities.modify(identity, same_payer, [&](auto& record){
             record.activated = 1;
         });
+    }
+
+    void moveidentity(uuid& identity_id, string& new_chain_id){
+        require_auth(Configs(_self, 0).get().manager);
+        auto identity = identities.find(identity_id);
+        check(identity != identities.end(), "Identity does not exist");
+        identities.erase(identity);
+    }
+
+
+    void seed(string& username, const public_key& key, asset& tokens, asset& expansion){
+        require_auth(Configs(_self, 0).get().manager);
+        auto existing = findIdentity(username);
+        check(existing == identities.end(), "Identity already exists");
+
+        Identity identity = Identity::create(username, key);
+        createIdentity(identity, tokens.amount, expansion.amount, 1);
     }
 
 
@@ -90,72 +108,67 @@ public:
         });
     }
 
-
-    void seed(string& username, const public_key& key){
-        require_auth(_self);
-
-        Identity identity = Identity::create(username, key);
-
-        createIdentity(identity, 100'0000, 1);
-    }
-
-    void loadtokens(const name& from, const asset& tokens, const string& memo){
+    void loadTokensFromTransfer(const name& from, const asset& tokens, const string& memo){
         auto identity = findIdentity(memo);
-        check(identity->activated, "Your identity is not yet activated, please wait.");
-        auto existing = topups.find(identity->fingerprint);
-
-        check(tokens.symbol == S_RIDL, "Can only load RIDL tokens into an identity.");
-
-        asset maxCanHold = asset(100'0000 + (identity->expansion.amount > 0 ? identity->expansion.amount : 0), S_RIDL);
-        asset total = tokens + identity->tokens;
-        if(existing != topups.end()) total += existing->tokens;
-        asset remaining = tokens;
-
-        // Too much was spent, sending the overage back
-        if(total > maxCanHold){
-            asset refunded = total - maxCanHold;
-            remaining = remaining - refunded;
-            sendRIDL(_self, from, refunded, "RIDL usage token overload remainder");
-        }
-
-        check(remaining.amount > 0, "Identity is already holding its maximum RIDL usage token capacity.");
-
-        if(existing == topups.end()){
-            topups.emplace(_self, [&](auto& row){
-                row.fingerprint = identity->fingerprint;
-                row.tokens = remaining;
-                row.claimable = now() + TOPUP_DELAY;
-            });
-        } else {
-            topups.modify(existing, same_payer, [&](auto& row){
-                row.tokens += remaining;
-                row.claimable = now() + TOPUP_DELAY;
-            });
-        }
-
-        sendDeferred(_self, name("tokensloaded"), identity->id, TOPUP_DELAY, identity->fingerprint);
+        loadtokens(*identity, tokens);
     }
 
-    void tokensloaded(uuid& identity_id){
+    void loadtokens(Identity identity, const asset& tokens){
+        // Always tries to get loaded tokens before hand, which resets timer and possibly removes rows.
+        tokensloaded(identity.id);
+
+        check( tokens.symbol.is_valid(), "RIDL symbol is invalid." );
+        check( tokens.is_valid(), "RIDL quantity is invalid." );
+        check( tokens.amount >= 1, "Must load at least 1.0000 RIDL." ); // No loading dust
+        check( tokens.symbol == S_RIDL, "Can only load RIDL tokens into an identity." );
+
+        auto topup = topups.find(identity.id);
+        if(topup == topups.end()) topups.emplace(_self, [&](auto& row){
+            row.id = identity.id;
+            row.tokens = tokens;
+            row.claimable = now() + TOPUP_DELAY;
+        });
+        else topups.modify(topup, same_payer, [&](auto& row){
+            row.tokens += tokens;
+        });
+    }
+
+    void tokensloaded(const uuid& identity_id){
+        // Shame that we have to waste CPU here to re-find identities, but
+        // this could be (and is) called outside of the `loadtokens` scope.
         auto identity = identities.find(identity_id);
         check(identity->activated, "Your identity is not yet activated, please wait.");
         check(identity != identities.end(), "An Identity with that name does not exist.");
 
-        auto topup = topups.find(identity->fingerprint);
-        check(topup != topups.end(), "There is no pending topup for this Identity.");
-        check(topup->claimable >= now(), "This Identity's topup is not yet available for use.");
+        auto topup = topups.find(identity->id);
+        if(topup == topups.end()) return;
+        // Don't merge end check and time check into one if-statement, EOSIO doesn't respect ordering and bills for all conditions.
+//        if(topup->claimable < now()){
+        if(true){
+            asset spaceLeft = identity->spaceLeft();
+            if(spaceLeft.amount > 0) {
+                asset tokensToLoad((topup->tokens > spaceLeft ? spaceLeft : topup->tokens).amount, S_RIDL);
 
-        identities.modify(identity, same_payer, [&](auto& record){
-            record.tokens += topup->tokens;
-        });
+//                check(false, "Space left: " + spaceLeft.to_string() + ", tokens to load: " + tokensToLoad.to_string() + ", topup tokens: " + topup->tokens.to_string());
+//                check(false, "Tokens left in topup: " + (topup->tokens - tokensToLoad).to_string());
 
-        topups.erase(topup);
+                if ((topup->tokens - tokensToLoad).amount == 0) topups.erase(topup);
+                else topups.modify(topup, same_payer, [&](auto &row) {
+                    row.tokens -= tokensToLoad;
+                    row.claimable = now() + TOPUP_DELAY;
+                });
+
+                identities.modify(identity, same_payer, [&](auto &record) {
+                    record.tokens += tokensToLoad;
+                });
+            }
+        }
     }
 
 private:
 
 
-    void createIdentity(Identity& identity, int64_t tokens = 20'0000, uint8_t preActivated = 0){
+    void createIdentity(Identity& identity, int64_t tokens = 20'0000, int64_t expansion = 1'0000, uint8_t preActivated = 0){
         auto index = identities.get_index<"name"_n>();
         auto found = index.find(toUUID(identity.username));
         check(found == index.end(), "This identity already exists.");
@@ -164,6 +177,7 @@ private:
             identity.id = identities.available_primary_key();
             if(identity.id == 0) identity.id = 1;
             record = identity;
+            record.expansion = asset(expansion, S_RIDL);
             record.tokens = asset(tokens, S_RIDL);
             record.block = tapos_block_num();
             record.activated = preActivated;

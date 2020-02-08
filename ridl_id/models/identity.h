@@ -50,13 +50,21 @@ namespace identity {
                 i++;
             }
         }
+
+        asset spaceLeft() const {
+            return this->maximumTokenSpace() - this->tokens;
+        }
+
+        asset maximumTokenSpace() const {
+            return asset(100'0000 + (this->expansion.amount > 0 ? this->expansion.amount : 0), S_RIDL);
+        }
     };
 
     struct [[eosio::table, eosio::contract("ridlridlridl")]] Topup {
-        uuid                    fingerprint;
+        uuid                    id;
         asset                   tokens;
         uint64_t                claimable;
-        uuid primary_key() const { return fingerprint; }
+        uuid primary_key() const { return id; }
     };
 
     typedef eosio::multi_index<"topups"_n, Topup> Topups;

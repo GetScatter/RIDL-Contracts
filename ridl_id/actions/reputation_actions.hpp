@@ -48,8 +48,10 @@ public:
         ///////////////////////////////////
         // Identity existence
         auto identity = identities.find(identity_id);
-        check(identity != identities.end(), "Identity does not exist");
-        check(identity->activated, "Your identity is not yet activated, please wait.");
+        // These two are already happening in the topup check, see ridl_id.cpp.
+        // Uncomment them if you remove the topup check!
+//        check(identity != identities.end(), "Identity does not exist");
+//        check(identity->activated, "Your identity is not yet activated, please wait.");
         // END /////////////////////////////////
 
         ///////////////////////////////////
@@ -57,7 +59,10 @@ public:
         checkBlockNum(block_num);
 
         string fragmentstring = "";
-        for(auto& frag : fragments) fragmentstring += frag.type+std::to_string(frag.value);
+        for(auto& frag : fragments) {
+            frag.assertValid();
+            fragmentstring += frag.type+std::to_string(frag.value);
+        }
 
         // Example `1:201239:reputation-1security1:1.0000 RIDL`
         string cleartext = std::to_string(identity->id) + ":" + entity + ":" + std::to_string(block_num) + ":" + fragmentstring +":"+ tokens.to_string();
@@ -66,9 +71,7 @@ public:
         // END /////////////////////////////////
 
 
-
-        // Fragment validation
-        for(auto& frag : fragments) frag.assertValid();
+        // Basic validation
         check(tokens / fragments.size() >= (asset(1'0000, S_RIDL)/5), "You must use at least 0.2000 RIDL per reputed fragment");
         check(identity->tokens.amount >= tokens.amount, "Not enough RIDL for repute.");
 
@@ -80,7 +83,8 @@ public:
         if(previousId > 0 && previousId != identity_id) {
             // Tokens won't move accounts, just identities.
             // This allows usage tokens to flow throughout the system
-            // without requiring topup
+            // without requiring topups, and also breaks through
+            // identity expansion limits.
             auto prev = identities.find(identity_id);
             identities.modify(prev, same_payer, [&](auto& row){
                 row.tokens += toPrevious;

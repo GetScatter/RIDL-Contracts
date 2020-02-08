@@ -63,22 +63,6 @@ namespace common {
         ).send();
     }
 
-    void cancelDeferred(uint64_t unique_id){
-        // Temporary fix to cancel deferred transactions because cancelling them from the .send()
-        // method throws an exception temporarily due to a patched but unapplied RAM exploit
-        // https://github.com/EOSIO/eos/issues/6541
-        cancel_deferred(unique_id);
-    }
-
-    void sendDeferred(name& _self, name action_name, uuid id, uint64_t delay_sec, uint64_t unique_id){
-        cancelDeferred(unique_id);
-
-        transaction t;
-        t.actions.emplace_back(action( permission_level{ _self, "active"_n }, _self, action_name, std::make_tuple(id)));
-        t.delay_sec = delay_sec;
-        t.send(unique_id, _self, true);
-    }
-
     uint32_t now(){
         return time_point_sec(current_time_point()).utc_seconds;
     }

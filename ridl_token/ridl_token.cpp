@@ -22,21 +22,18 @@ namespace ridl {
     }
 
 
-    void token::issue( name to, asset quantity, string memo )
-    {
-        auto sym = quantity.symbol;
-        check( sym.is_valid(), "invalid symbol name" );
+    void token::issue( name to, asset quantity, string memo ){
         check( memo.size() <= 256, "memo has more than 256 bytes" );
 
-        stats statstable( _self, sym.code().raw() );
-        auto existing = statstable.find( sym.code().raw() );
+        stats statstable( _self, quantity.symbol.code().raw() );
+        auto existing = statstable.find( quantity.symbol.code().raw() );
         check( existing != statstable.end(), "token with symbol does not exist, create token before issue" );
         const auto& st = *existing;
 
         require_auth( st.issuer );
+        check( quantity.symbol.is_valid(), "invalid symbol name" );
         check( quantity.is_valid(), "invalid quantity" );
         check( quantity.amount > 0, "must issue positive quantity" );
-
         check( quantity.symbol == st.supply.symbol, "symbol precision mismatch" );
         check( quantity.amount <= st.max_supply.amount - st.supply.amount, "quantity exceeds available supply");
 
@@ -47,27 +44,21 @@ namespace ridl {
         add_balance( st.issuer, quantity, st.issuer );
 
         if( to != st.issuer ) {
-            SEND_INLINE_ACTION( *this, transfer, { {st.issuer, "active"_n} },
-                                { st.issuer, to, quantity, memo }
-            );
+            SEND_INLINE_ACTION( *this, transfer, { {st.issuer, "active"_n} }, { st.issuer, to, quantity, memo } );
         }
     }
 
-    void token::transfer( name    from,
-                          name    to,
-                          asset   quantity,
-                          string  memo )
-    {
+    void token::transfer(name from, name to, asset quantity, string memo){
         check( from != to, "cannot transfer to self" );
         require_auth( from );
         check( is_account( to ), "to account does not exist");
-        auto sym = quantity.symbol.code();
-        stats statstable( _self, sym.raw() );
-        const auto& st = statstable.get( sym.raw() );
+        stats statstable( _self, quantity.symbol.code().raw() );
+        const auto& st = statstable.get( quantity.symbol.code().raw() );
 
         require_recipient( from );
         require_recipient( to );
 
+        check( quantity.symbol.is_valid(), "invalid symbol name" );
         check( quantity.is_valid(), "invalid quantity" );
         check( quantity.amount > 0, "must transfer positive quantity" );
         check( quantity.symbol == st.supply.symbol, "symbol precision mismatch" );
@@ -77,6 +68,39 @@ namespace ridl {
 
         sub_balance( from, quantity );
         add_balance( to, quantity, payer );
+    }
+
+    void token::movechainacc(name from, name to, asset quantity, string chain){
+        movechain(from, quantity);
+    }
+
+
+    void token::movechainid(name from, string username, asset quantity){
+        movechain(from, quantity);
+    }
+
+    void token::movedtokens(name to, asset quantity, string old_chain, string txid){
+        SEND_INLINE_ACTION( *this, issue, { {_self, "active"_n} }, { to, quantity, txid } );
+    }
+
+    void token::movechain(name from, asset quantity){
+        require_auth( from );
+        stats statstable( _self, quantity.symbol.raw() );
+        const auto& st = statstable.get( quantity.symbol.raw() );
+
+        require_recipient( from );
+
+        check( quantity.symbol.is_valid(), "invalid symbol name" );
+        check( quantity.is_valid(), "invalid quantity" );
+        check( quantity.amount > 0, "must transfer positive quantity" );
+        check( quantity.symbol == st.supply.symbol, "symbol precision mismatch" );
+
+        statstable.modify( st, same_payer, [&]( auto& s ) {
+            s.supply -= quantity;
+            s.max_supply -= quantity;
+        });
+
+        sub_balance( from, quantity );
     }
 
     void token::sub_balance( name owner, asset value ) {
@@ -108,4 +132,4 @@ namespace ridl {
 
 }
 
-EOSIO_DISPATCH( ridl::token, (create)(issue)(transfer) )
+EOSIO_DISPATCH( ridl::token, (create)(issue)(transfer)(movechainacc)(movechainid)(movedtokens) )

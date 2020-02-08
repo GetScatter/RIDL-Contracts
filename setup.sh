@@ -24,12 +24,16 @@ helpers/system_account.sh test2account $USER_KEY
 ridl_token/scripts/set.sh
 ridl_token/scripts/perms.sh
 cleos push action ridlridltkns create '[]' -p ridlridltkns
+cleos push action ridlridltkns issue '["eosio", "10000.0000 RIDL", ""]' -p ridlridltkns
 cleos transfer eosio test1account "100000.0000 EOS" "" -p eosio
 cleos transfer eosio test2account "100000.0000 EOS" "" -p eosio
 
 # RIDL Contract Setup
 ridl_id/scripts/set.sh
 ridl_id/scripts/perms.sh
+cleos push action ridlridlridl init '["eosio"]' -p ridlridlridl
+cleos push action ridlridlridl identify '["helloworld", "EOS8YQzaYLxT17fWAPueQBxRjHehTQYZEvgPAWPPH4mAuwTJi3mPN"]' -p eosio
+cleos push action ridlridlridl activate '[1]' -p eosio
 
 
 
